@@ -1,0 +1,93 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package cacheroach.principal;
+import "capabilities.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/principal";
+
+message ID {
+  bytes data = 1;
+}
+
+message Principal {
+  option (capabilities.msg_rule).or = {
+    rule: {direction: RESPONSE}
+    rule: {
+      message: "must be able to read the principal"
+      may: {
+        capabilities: {read: true}
+        scope: {on_principal: {field: 1}}
+      }}
+  };
+
+  ID ID = 1;
+  string label = 2;
+  int64 version = 3;
+  repeated string handles = 4 [
+    (capabilities.field_rule) = {
+      message: "must have pii access"
+      may: {
+        capabilities: {pii: true}
+        scope: {on_principal: {field: 1}}
+      }
+    }
+  ];
+
+  // Used internally, not exposed to clients.
+  string password_hash = 32 [
+    (capabilities.field_rule) = {
+      message: "internal use only"
+      never: true
+    }
+  ];
+  // A plain-text password which will be hashed by the server.
+  string password_set = 33 [
+    (capabilities.field_rule) = {
+      message: "not returned to caller"
+      direction: REQUEST
+    }
+  ];
+}
+
+message WatchRequest {
+  ID principal = 1;
+  google.protobuf.Duration duration = 2;
+}
+
+message EnsureRequest {
+  Principal principal = 1;
+  bool delete = 2;
+}
+
+message EnsureResponse {
+  Principal principal = 1;
+}
+
+service Principals {
+  rpc Ensure (EnsureRequest) returns (EnsureResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+  rpc List (google.protobuf.Empty) returns (stream Principal) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc Load (ID) returns (Principal) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  rpc Watch (WatchRequest) returns (stream Principal) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}

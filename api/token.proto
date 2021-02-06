@@ -1,0 +1,101 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package cacheroach.token;
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/empty.proto";
+import "capabilities.proto";
+import "session.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/token";
+
+// A token is an encoded access token.
+message Token {
+  // A signed JWT claim.
+  string jwt = 1;
+}
+
+message IssueRequest {
+  // The template field describes a session to be issued. The template
+  // must describe a subset of the caller's delegable capabilities
+  // and on a sub-scope of the caller's current scope.
+  session.Session template = 1;
+}
+message IssueResponse {
+  session.Session issued = 1;
+  Token token = 2;
+}
+message InvalidateRequest {
+  oneof Kind {
+    // Invalidate a session by ID.
+    session.ID ID = 1;
+    // Invalidate the current session (i.e. log out).
+    bool current = 2;
+  }
+}
+
+message LoadRequest {
+  oneof Kind {
+    // Load a session by ID.
+    session.ID ID = 1;
+    // Load a named session owned by the requesting principal.
+    string name = 2;
+  }
+}
+
+service Tokens {
+  // Current returns the Session associated with the current request.
+  // This can be used to determine the current principal and scope
+  // of access.
+  rpc Current (google.protobuf.Empty) returns (session.Session) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  // Issue creates an encoded token described by the session template.
+  rpc Issue (IssueRequest) returns (IssueResponse) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  // Find returns all valid sessions that are accessible by the
+  // principal associated with the current request, using the provided
+  // Scope as a filter.
+  rpc Find (session.Scope) returns (stream session.Session) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (capabilities.method_rule) = {
+      message: "must have delegate access to session principal"
+      may: {
+        capabilities: {delegate:true}
+        scope: {on_principal: {context: SESSION_PRINCIPAL}}
+      }
+    };
+  }
+  // Load retrieves the given session.
+  rpc Load(LoadRequest) returns (session.Session) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  // Invalidate destroys an active token.
+  rpc Invalidate (InvalidateRequest) returns (google.protobuf.Empty) {
+    option idempotency_level = IDEMPOTENT;
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  // Refresh invalidates the access token associated with the current
+  // request and returns a refreshed token and session.
+  rpc Refresh (google.protobuf.Empty) returns (IssueResponse) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  // Validate returns the currently-valid session associated with the token.
+  rpc Validate (Token) returns (session.Session) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (capabilities.method_rule).auth_status = PUBLIC;
+  }
+}

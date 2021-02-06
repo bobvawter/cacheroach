@@ -1,0 +1,71 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package cacheroach.tenant;
+import "google/protobuf/empty.proto";
+import "capabilities.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/tenant";
+
+message ID {
+  bytes data = 1;
+}
+
+message Tenant {
+  option (capabilities.msg_rule) = {
+    message: "must have read access to the tenant"
+    may: {
+      capabilities: {read: true}
+      scope: {on_location: {tenant_id: {field: 1}, path: {string_value: "/*"}}}
+    }
+  };
+
+  ID ID = 1;
+  string label = 2;
+  int64 version = 3;
+}
+
+message EnsureRequest {
+  Tenant tenant = 1;
+  bool delete = 2;
+}
+
+message EnsureResponse {
+  Tenant tenant = 1;
+}
+
+message GetRequest {
+  option (capabilities.msg_rule).may = {
+    capabilities: {read: true}
+    scope: {on_location: {tenant_id: {field: 1}}}
+  };
+  ID ID = 1;
+}
+
+message GetResponse {
+  Tenant tenant = 1;
+}
+
+service Tenants {
+  rpc Ensure (EnsureRequest) returns (EnsureResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+  rpc Get(GetRequest) returns (GetResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  rpc List (google.protobuf.Empty) returns (stream Tenant) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+}

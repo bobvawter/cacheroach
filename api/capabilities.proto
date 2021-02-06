@@ -1,0 +1,133 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package cacheroach.capabilities;
+import "google/protobuf/descriptor.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/capabilities";
+
+message Capabilities {
+  // General model property access.
+  bool read = 1;
+  // General model property access.
+  bool write = 2;
+  // Grants the ability to create additional access tokens.
+  bool delegate = 3;
+  // Grants access to personally-identifying information.
+  bool pii = 4;
+}
+
+enum Direction {
+  INVALID_DIRECTION = 0;
+  REQUEST = 1;
+  RESPONSE = 2;
+}
+
+enum ContextReference {
+  INVALID_CONTEXT = 0;
+  SESSION_PRINCIPAL = 1; // The principal that is making the request.
+  SCOPE_TENANT = 2; // The tenant that is embedded in the session's scope.
+  SCOPE_PRINCIPAL = 3; // The principal embedded in the session's scope.
+  UNAUTHENTICATED_PRINCIPAL = 4; // A well-known ID for an unauthorized request.
+  VHOST_TENANT = 5; // The tenant associated with a virtual-host.
+}
+
+// Reference to an ID.
+message Reference {
+  oneof Kind {
+    ContextReference context = 1;
+    int32 field = 2;
+    // A literal string value.
+    string string_value = 3;
+  }
+}
+
+// Analog of session.Location.
+message LocationReference {
+  Reference tenant_id = 1;
+  Reference path = 2;
+}
+
+// Analog of session.Scope.
+message ScopeReference {
+  oneof Kind {
+    bool super_token = 1;
+    Reference on_principal = 2 ;
+    LocationReference on_location = 3;
+  }
+}
+
+// Analog of session.Session.
+message SessionReference {
+  Capabilities capabilities = 2;
+  ScopeReference scope = 4;
+}
+
+
+message Rule {
+  enum AuthStatus {
+    // Require credentials.
+    LOGGED_IN = 0;
+    // Always allow access, even to unauthenticated callers.
+    PUBLIC = 1;
+    // Require super-token access. This is the default.
+    SUPER = 2;
+  }
+  message And {
+    repeated Rule rule = 1;
+  }
+  message Eq {
+    Reference a = 1;
+    Reference b = 2;
+  }
+  message Or {
+    repeated Rule rule = 1;
+  }
+
+  oneof Kind {
+    // Requires equality.
+    Eq eq = 1;
+    // Inverts the enclosed rule.
+    Rule not = 2;
+    // A rule that never matches.
+    bool never = 3;
+    // Conjunction.
+    And and = 4;
+    // Disjunction.
+    Or or = 5;
+    // General authentication status.
+    AuthStatus auth_status = 6;
+    SessionReference may = 7;
+    // The request direction.
+    Direction direction = 8;
+    // Applies to session.Session; indicates that the session must be a
+    // subset of the principal's scopes.
+    bool is_subset = 9;
+  }
+
+  // A message to be returned to the user explaining the rule.
+  string message = 15;
+}
+
+extend google.protobuf.MessageOptions {
+  Rule msg_rule = 55123;
+}
+
+extend google.protobuf.FieldOptions {
+  // Applies the given requirements if the field is set.
+  Rule field_rule = 55123;
+}
+
+extend google.protobuf.MethodOptions {
+  Rule method_rule = 55123;
+}

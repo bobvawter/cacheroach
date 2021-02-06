@@ -1,0 +1,165 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package cacheroach.upload;
+import "google/protobuf/timestamp.proto";
+import "capabilities.proto";
+import "tenant.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/upload";
+
+message ID {
+  bytes data = 1;
+}
+
+// TransferState should be treated as an opaque value by the client. The
+// structure of the message is not guaranteed by any API compatibility
+// policy.
+message TransferState {
+  ID ID = 1;
+  int64 offset = 2;
+  bytes data = 3;
+  google.protobuf.Timestamp deadline = 4;
+  tenant.ID tenant_id = 5;
+  bytes signature = 15;
+}
+
+message BeginRequest {
+  option (capabilities.msg_rule) = {
+    message: "must have write access to tenant and path"
+    may: {
+      capabilities: {write: true}
+      scope: {
+        on_location: {
+          tenant_id: {field: 1}
+          path: {field: 2}
+        }
+      }
+    }
+  };
+
+  tenant.ID tenant = 1;
+  string path = 2;
+
+  // For trivially small (or empty) files, we'd like to be able to
+  // effect the transfer in a single request.
+  oneof committed {
+    // The contents of the file.  This should generally be under
+    // 1 MiB. If the contents exceed the server's configured maximum,
+    // an error may be returned.
+    bytes contents = 3;
+    // If true, an empty file will be committed.
+    bool empty = 4;
+  }
+}
+
+message BeginResponse {
+  // Continuation data to provide to TransferRequest.
+  TransferState state = 1;
+  // The maximum number of bytes to include in a single transfer.
+  int32 max_chunk_size = 2;
+  // If this field is true, the contents in the BeginRequest were
+  // committed successfully and the transfer is finished.  If false,
+  // the client can use the returned TransferState to perform the
+  // file transfer as usual.
+  bool committed = 3;
+}
+
+message CommitRequest {
+  // Continuation data from a previous TransferRequest.
+  TransferState state = 1;
+  // Additional metadata to be returned when subsequently fetching the
+  // file. The metadata is placed on the CommitRequest so that stream-
+  // based operations (e.g. computing a checksum) may be performed
+  // during the transfer process.
+  map<string, string> meta = 2;
+}
+
+message CommitResponse{}
+
+message FetchRequest {
+  option (capabilities.msg_rule) = {
+    message: "must have write access to tenant and path"
+    may: {
+      capabilities: {write: true}
+      scope: {
+        on_location: {
+          tenant_id: {field: 1}
+          path: {field: 2}
+        }
+      }
+    }
+  };
+
+  tenant.ID tenant = 1;
+  string path = 2;
+
+  // The URL to fetch.
+  string remote_url = 3;
+  // Additional headers to append to the request, (e.g. Authorization).
+  map<string, string> remote_headers = 4;
+  // The HTTP method to make the request with.
+  // Defaults to GET if unspecified.
+  string remote_method = 5;
+}
+
+message FetchResponse {
+  int32 remote_http_code = 1;
+  string remote_http_message = 2;
+}
+
+message TransferRequest {
+  // This state must be provided from either BeginResponse or a
+  // previous TransferResponse.
+  TransferState state = 1;
+  // The size of data must not exceed BeginResponse.max_chunk_size.
+  bytes data = 2;
+}
+
+message TransferResponse {
+  // The state to pass into the next TransferRequest.
+  TransferState state = 1;
+}
+
+// An upload process starts by calling Begin, which issues a
+// TransferState message. The TransferState will be incrementally
+// updated by some number of calls to Transfer. A final call to Commit
+// will attach the transferred data to the requested file path.
+//
+// The BeginResponse will include a maximum chunk size that is enforced
+// by the server. Clients may upload smaller chunks, but this will
+// decrease overall efficiency.
+//
+// Calls to Transfer and Commit are idempotent.  A client need only
+// retry a call to Transfer or to Commit in order to recover from an
+// interrupted connection.
+//
+// After a file has been uploaded, it may be retrieved with a regular
+// HTTP GET call to the tenant's virtual host, or a signed URI path
+// may be generated with the Retrieve endpoint.
+service Uploads {
+  rpc Begin(BeginRequest) returns (BeginResponse) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+  }
+  rpc Commit(CommitRequest) returns (CommitResponse) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+    option idempotency_level = IDEMPOTENT;
+  }
+  rpc Fetch(FetchRequest) returns (FetchResponse) {
+    option (capabilities.method_rule).auth_status = SUPER;
+  }
+  rpc Transfer(TransferRequest) returns (TransferResponse) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+    option idempotency_level = IDEMPOTENT;
+  }
+}

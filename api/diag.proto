@@ -1,0 +1,35 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package cacheroach.diag;
+import "google/protobuf/empty.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/diag";
+
+
+message DiagResponse {
+  message Meta {
+    repeated string value = 1;
+  }
+  string hostname = 1;
+  map<string, Meta> rpc_meta = 2;
+  map<string, Meta> environment = 3;
+  map<string, Meta> http_headers = 4;
+}
+
+// Diagnostic services for testing.
+service Diags {
+  rpc Echo(google.protobuf.Empty) returns (DiagResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  };
+}

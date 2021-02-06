@@ -1,0 +1,140 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+package cacheroach.file;
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "capabilities.proto";
+import "tenant.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/file";
+
+// A Cursor should be treated as an opaque value by clients.
+// It is not subject to any API compatibility guarantees.
+message Cursor {
+  string after = 1;
+  google.protobuf.Timestamp as_of = 2;
+}
+
+message DeleteRequest {
+  option (capabilities.msg_rule) = {
+    message: "must have read access to tenant and path"
+    may: {
+      capabilities: {read: true}
+      scope: {
+        on_location: {
+          tenant_id: {field: 1}
+          path: {field: 2}
+        }
+      }
+    }
+  };
+
+  tenant.ID tenant = 1;
+  string path = 2;
+}
+
+message Meta {
+  tenant.ID tenant = 1;
+  string path = 2;
+  int64 version = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp modified_at = 5;
+  map<string, string> meta = 6;
+  int64 size = 7;
+}
+
+message ListRequest {
+  option (capabilities.msg_rule) = {
+    message: "must have read access to tenant and path"
+    may: {
+      capabilities: {read: true}
+      scope: {
+        on_location: {
+          tenant_id: {field: 1}
+          path: {field: 2}
+        }
+      }
+    }
+  };
+
+  tenant.ID tenant = 1;
+  string path = 2;
+  // A cursor from a previous ListResponse.
+  Cursor cursor = 3;
+}
+
+// A ListResponse returns a page of results and a durable Cursor
+// to retrieve the next page.
+message ListResponse {
+  repeated Meta files = 1;
+  Cursor cursor = 2;
+}
+
+message RetrievalRequest {
+  option (capabilities.msg_rule) = {
+    message: "must have read access to tenant and path"
+    may: {
+      capabilities: {read: true}
+      scope: {
+        on_location: {
+          tenant_id: {field: 1}
+          path: {field: 2}
+        }
+      }
+    }
+  };
+
+  tenant.ID tenant = 1;
+  string path = 2;
+  // If non-zero, the request will be restricted to a specific version
+  // of the file.
+  int64 version = 3;
+  // If present, restricts the validity of the returned retrieval path.
+  google.protobuf.Duration valid_for = 4;
+}
+
+message RetrievalResponse {
+  // A server-relative HTTP GET request path to retrieve the data. This
+  // path will contain an authentication token that permits access to
+  // the file's contents; the subsequent request need not be otherwise
+  // authenticated.
+  string get_path = 1;
+  // If present, the expiration time of the token.
+  google.protobuf.Timestamp expires_at = 2;
+  // The metadata of the requested file.
+  Meta meta = 3;
+}
+
+service Files {
+  rpc Delete(DeleteRequest) returns (google.protobuf.Empty) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+    option idempotency_level = IDEMPOTENT;
+  }
+
+  rpc List(ListRequest) returns (ListResponse) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // A Retrieve call returns a server-relative URL path to retrieve the
+  // contents of the requested file.
+  //
+  // This endpoint can be used by a trusted controller process to
+  // distribute files to workers, without having to delegate access to
+  // the individual workers.
+  rpc Retrieve(RetrievalRequest) returns (RetrievalResponse) {
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}

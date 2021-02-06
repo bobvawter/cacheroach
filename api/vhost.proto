@@ -1,0 +1,24 @@
+syntax = "proto3";
+package cacheroach.vhost;
+import "google/protobuf/empty.proto";
+import "tenant.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/vhost";
+
+message VHost {
+  string vhost = 1;
+  tenant.ID tenant_id = 2;
+}
+
+message EnsureRequest {
+  VHost vhost = 1;
+  bool delete = 2;
+}
+
+service VHosts {
+  rpc Ensure (EnsureRequest) returns (google.protobuf.Empty) {
+    option idempotency_level = IDEMPOTENT;
+  }
+  rpc List (google.protobuf.Empty) returns (stream VHost) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}

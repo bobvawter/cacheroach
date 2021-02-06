@@ -1,0 +1,26 @@
+# See https://docs.docker.com/docker-hub/builds/automated-testing/
+version: "3.8"
+services:
+  cockroachdb:
+    image: cockroachdb/cockroach:latest-v20.2
+    command: start-single-node --insecure
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+  sut:
+    build:
+      context: .
+      target: builder
+    depends_on:
+      - cockroachdb
+    environment:
+      TEST_CONNECT_STRING: "postgresql://root@cockroachdb:26257/testing"
+    command: >
+      /bin/sh -c "
+      go test -p 1 -race -coverpkg=./pkg/... -coverprofile=coverage.txt -covermode=atomic ./pkg/... &&
+      go fmt ./... &&
+      go vet ./... &&
+      go run golang.org/x/lint/golint -set_exit_status ./... &&
+      go run honnef.co/go/tools/cmd/staticcheck -checks all,-ST1000 ./... &&
+      echo Done
+      "

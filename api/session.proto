@@ -1,0 +1,85 @@
+// Copyright 2021 The Cockroach Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+// The types in this package have shortened JSON names because they
+// are embedded in JWT tokens and we'd like to make them easier to
+// copy and paste.
+package cacheroach.session;
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/timestamp.proto";
+import "capabilities.proto";
+import "principal.proto";
+import "tenant.proto";
+option go_package = "github.com/bobvawter/cacheroach/api/session";
+
+
+message ID {
+  bytes data = 1 [json_name = "d"];
+}
+
+message Location {
+  // The tenant.
+  tenant.ID tenant_id = 1 [json_name = "t"];
+  // A specific path (e.g. /foo/bar/baz) or a path prefix
+  // (e.g. /foo/bar/*).
+  string path = 2 [json_name = "p"];
+  // Restricts access to a specific version of the data on the path.
+  int64 version = 3 [json_name = "v"];
+}
+
+message Scope {
+  oneof Kind {
+    // A super-token is only used internally and allows anything.
+    bool super_token = 1 [
+      json_name = "s",
+      (capabilities.field_rule).auth_status = SUPER
+    ];
+    // Delegates access to a principal (which may be the top-level principal_id).
+    principal.ID on_principal = 2 [json_name = "p"];
+    // Delegates operations within a tenancy.
+    Location on_location = 3 [json_name = "l"];
+  }
+}
+
+message Session {
+  option (capabilities.msg_rule).or = {
+    rule: {direction: RESPONSE}
+    rule: {
+      message: "requested session must be a subset of caller's session"
+      is_subset: true
+    }
+  };
+  ID ID = 1;
+  capabilities.Capabilities capabilities = 2 [json_name = "c"];
+  principal.ID principal_id = 3 [
+    json_name = "p",
+    (capabilities.field_rule).or = {
+      rule: {direction: RESPONSE},
+      rule: {
+        message: "must have delegation access"
+        may: {
+          capabilities: {delegate: true}
+          scope: {on_principal: {field: 3}}
+        }
+      }
+    }
+  ];
+  Scope scope = 4 [json_name = "s"];
+  google.protobuf.Timestamp expires_at = 5 [json_name = "x"];
+  // A long-form note, to describe the session to a human.
+  string note = 6;
+  // A key that is unique per principal, to allow easy
+  // programmatic access to a specific session.
+  string name = 7;
+}
