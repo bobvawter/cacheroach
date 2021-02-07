@@ -7,6 +7,7 @@ require (
 	github.com/Mandala/go-log v0.1.0
 	github.com/allegro/bigcache/v2 v2.2.5 // indirect
 	github.com/allegro/bigcache/v3 v3.0.0
+	github.com/blushft/go-diagrams v0.0.0-20201006005127-c78c821223d9
 	github.com/bobvawter/latch v1.0.0
 	github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
 	github.com/fullstorydev/grpcui v1.1.0
@@ -17,7 +18,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/google/wire v0.5.0
 	github.com/hashicorp/golang-lru v0.5.1
-	github.com/hhatto/gocloc v0.3.3 // indirect
+	github.com/hhatto/gocloc v0.3.3
 	github.com/jackc/pgconn v1.8.0
 	github.com/jackc/pgproto3/v2 v2.0.7 // indirect
 	github.com/jackc/pgx/v4 v4.10.1
