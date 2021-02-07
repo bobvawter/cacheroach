@@ -1,8 +1,10 @@
 # Cacheroach
 
-> A secure, serverless, multi-tenant file store built on top of CockroachDB.
+> I just want to serve five terabytes of data, across multiple cloud providers.
 
 This is the beginning of a blog post; it needs a lot more work.
+
+![Hero image showing cacheroach deployment architecture](./doc/hero.png)
 
 ## Implementation details
 

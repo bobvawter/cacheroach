@@ -26,4 +26,4 @@ import (
 
 //go:generate protoc --go_out=./api/ --go_opt=module=github.com/bobvawter/cacheroach/api --go-grpc_out=./api/ --go-grpc_opt=module=github.com/bobvawter/cacheroach/api -I ./api/ auth.proto capabilities.proto diag.proto file.proto principal.proto session.proto tenant.proto token.proto upload.proto vhost.proto
 //go:generate go run github.com/google/wire/cmd/wire gen ./pkg/...
-//go:generate go run ./pkg/cmd/gendoc
+//go:generate go run ./pkg/cmd/gendoc ./doc/

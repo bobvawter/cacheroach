@@ -4,7 +4,7 @@ FROM golang:1.15 AS builder
 ARG PROTOVER=3.14.0
 ARG PROTOARCH=linux-x86_64
 RUN apt-get update && \
-    apt-get -y install curl unzip && \
+    apt-get -y install curl graphviz unzip && \
     curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOVER/protoc-$PROTOVER-$PROTOARCH.zip && \
     unzip protoc-$PROTOVER-$PROTOARCH.zip -d /usr/
 WORKDIR /tmp/compile
