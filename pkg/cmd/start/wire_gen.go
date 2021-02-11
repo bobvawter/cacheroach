@@ -92,7 +92,7 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	vHostWrapper := rest.ProvideVHostWrapper(logger, vHostMap)
 	fileHandler := rest.ProvideFileHandler(store, enforcerEnforcer, fsStore, logger, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	healthz := rest.ProvideHealthz(pool, logger)
-	retrieve := rest.ProvideRetrieve(logger, fsStore, tokenServer)
+	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, tokenServer)
 	if err != nil {
 		cleanup4()

@@ -16,16 +16,12 @@ package rest
 import (
 	"context"
 	"net/http"
-	"time"
-
 	"os"
-
-	"path"
+	"time"
 
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/api/capabilities"
 	"github.com/bobvawter/cacheroach/api/session"
-	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/bobvawter/cacheroach/api/vhost"
 	"github.com/bobvawter/cacheroach/pkg/enforcer"
 	"github.com/bobvawter/cacheroach/pkg/store/blob"
@@ -176,20 +172,14 @@ type Retrieve http.Handler
 func ProvideRetrieve(
 	logger *log.Logger,
 	fs *fs.Store,
-	tokens token.TokensServer,
+	pprofWrapper PProfWrapper,
+	latchWrapper LatchWrapper,
+	sessionWrapper SessionWrapper,
+	vHostWrapper VHostWrapper,
 ) Retrieve {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	fn := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
-
-		// Expect the token in the penultimate position.
-		tkn := path.Base(path.Dir(req.URL.Path))
-
-		sn, err := tokens.Validate(ctx, &token.Token{Jwt: tkn})
-		if err != nil {
-			logger.Tracef("could not validate token: %v", err)
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
+		sn := session.FromContext(ctx)
 
 		if !sn.GetCapabilities().GetRead() {
 			logger.Trace("did not have read capability")
@@ -215,4 +205,6 @@ func ProvideRetrieve(
 		}
 		http.ServeContent(w, req, f.Name(), f.ModTime(), f)
 	})
+
+	return pprofWrapper(sessionWrapper(vHostWrapper(latchWrapper(fn))))
 }

@@ -231,6 +231,9 @@ func (c *Cache) Prune() (n int, err error) {
 	var totalSize int64
 
 	err = filepath.Walk(c.cfg.Path, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if info.IsDir() {
 			return nil
 		}

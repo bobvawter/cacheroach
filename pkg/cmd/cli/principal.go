@@ -15,13 +15,17 @@ package cli
 
 import (
 	"io"
-
 	"strconv"
+	"time"
 
+	"github.com/bobvawter/cacheroach/api/capabilities"
 	"github.com/bobvawter/cacheroach/api/principal"
+	"github.com/bobvawter/cacheroach/api/session"
+	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func (c *CLI) principal() *cobra.Command {
@@ -30,12 +34,13 @@ func (c *CLI) principal() *cobra.Command {
 		Short: "principal management",
 	}
 
-	var label, password string
+	var createOut, label, password string
 	create := &cobra.Command{
 		Use:   "create <username>",
 		Short: "create a principal",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			username := args[0]
 			conn, err := c.conn(cmd.Context())
 			if err != nil {
 				return err
@@ -43,22 +48,56 @@ func (c *CLI) principal() *cobra.Command {
 			req := &principal.EnsureRequest{
 				Principal: &principal.Principal{
 					ID:      principal.NewID(),
-					Handles: []string{"username:" + args[0]},
+					Handles: []string{"username:" + username},
 				},
 			}
-			if label != "" {
+			if label == "" {
+				req.Principal.Label = username
+			} else {
 				req.Principal.Label = label
 			}
 			if password != "" {
 				req.Principal.PasswordSet = password
 			}
-			if _, err = principal.NewPrincipalsClient(conn).Ensure(cmd.Context(), req); err != nil {
+			prn, err := principal.NewPrincipalsClient(conn).Ensure(cmd.Context(), req)
+			if err != nil {
 				return err
 			}
-			c.logger.Info("Success")
+
+			// Give the user access to itself
+			iss, err := token.NewTokensClient(conn).Issue(cmd.Context(), &token.IssueRequest{
+				Template: &session.Session{
+					ExpiresAt:    timestamppb.New(time.Now().AddDate(1, 0, 0).Round(time.Second)),
+					Capabilities: capabilities.All(),
+					Name:         "<self>",
+					Scope: &session.Scope{Kind: &session.Scope_OnPrincipal{
+						OnPrincipal: prn.Principal.ID,
+					}},
+					PrincipalId: prn.Principal.ID,
+				}})
+			if err != nil {
+				return err
+			}
+
+			cfg := c.config.clone()
+			cfg.Session = iss.Issued
+			cfg.Token = iss.Token.Jwt
+
+			if createOut == "" {
+				createOut = username + ".cfg"
+			}
+			if err := cfg.writeToFile(createOut); err != nil {
+				return err
+			}
+			c.logger.Infof("Wrote configuration to %s", createOut)
+			out := newTabs()
+			defer out.Close()
+			out.Printf("Principal ID\t%s\n", prn.Principal.ID.AsUUID())
 			return nil
 		},
 	}
+	create.Flags().StringVarP(&createOut, "out", "o", "",
+		"write a new configuration file, defaults to username.cfg")
 	create.Flags().StringVar(&label, "label", "",
 		"set the principal's label (defaults to username)")
 	create.Flags().StringVar(&password, "password", "",

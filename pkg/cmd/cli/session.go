@@ -37,7 +37,7 @@ func (c *CLI) session() *cobra.Command {
 	var capNames []string
 	var duration time.Duration
 	var name, note, pID string
-	var onType, onID, onPath string
+	var onType, onID, onPath, out string
 	delegate := &cobra.Command{
 		Use:   "delegate",
 		Short: "create a session and access token",
@@ -110,10 +110,20 @@ func (c *CLI) session() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			if out != "" {
+				cfg := c.config.clone()
+				cfg.DefaultTenant = data.Issued.GetScope().GetOnLocation().GetTenantId()
+				cfg.Session = data.Issued
+				cfg.Token = data.Token.Jwt
+				if err := cfg.writeToFile(out); err != nil {
+					return err
+				}
+			}
+
 			out := newTabs()
 			defer out.Close()
 			out.Printf("Session ID\t%s\n", data.Issued.ID.AsUUID())
-			out.Printf("JWT Token\t%s\n", data.Token.Jwt)
 			return nil
 		},
 	}
@@ -133,6 +143,8 @@ func (c *CLI) session() *cobra.Command {
 		"the id of the principal or tenant being delegated")
 	delegate.Flags().StringVar(&onPath, "path", "/*",
 		"the path within a tenant being delegated")
+	delegate.Flags().StringVarP(&out, "out", "o", "",
+		"write a configuration file for the newly-created session")
 
 	top.AddCommand(
 		delegate,

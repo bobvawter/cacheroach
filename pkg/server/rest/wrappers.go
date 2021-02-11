@@ -84,11 +84,16 @@ func ProvideSessionWrapper(
 ) SessionWrapper {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			var jwt string
+			if hdr := req.Header.Get("authorization"); strings.Index(hdr, "Bearer ") == 0 {
+				jwt = hdr[7:]
+			} else if p := req.URL.Query().Get("access_token"); p != "" {
+				jwt = p
+			}
 			sn := bootstrap.PublicSession
-			hdr := req.Header.Get("Authorization")
-			if strings.Index(hdr, "Bearer ") == 0 {
+			if jwt != "" {
 				var err error
-				if sn, err = tokens.Validate(req.Context(), &token.Token{Jwt: hdr[7:]}); err != nil {
+				if sn, err = tokens.Validate(req.Context(), &token.Token{Jwt: jwt}); err != nil {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}

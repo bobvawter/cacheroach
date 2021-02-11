@@ -11,6 +11,7 @@ cacheroach principal create <username> [flags]
 ```
   -h, --help              help for create
       --label string      set the principal's label (defaults to username)
+  -o, --out string        write a new configuration file, defaults to username.cfg
       --password string   set a password when creating the principal
 ```
 

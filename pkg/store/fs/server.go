@@ -199,6 +199,14 @@ func (s *Server) retrievePath(
 		return nil, "", err
 	}
 
-	ret := path.Join("/_/v0/retrieve/", jwt.Jwt, url.PathEscape(path.Base(filePath)))
-	return sn, ret, nil
+	// Stuff the original filename into the path for friendly downloads.
+	// The actual path will be picked out of the token.
+	u := &url.URL{
+		Path: path.Join("/_/v0/retrieve/", url.PathEscape(path.Base(filePath))),
+		RawQuery: url.Values{
+			"access_token": []string{jwt.Jwt},
+		}.Encode(),
+	}
+
+	return sn, u.RequestURI(), nil
 }

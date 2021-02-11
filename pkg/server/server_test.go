@@ -29,6 +29,7 @@ import (
 
 	"github.com/bobvawter/cacheroach/api/auth"
 	"github.com/bobvawter/cacheroach/api/capabilities"
+	"github.com/bobvawter/cacheroach/api/file"
 	"github.com/bobvawter/cacheroach/api/principal"
 	"github.com/bobvawter/cacheroach/api/session"
 	"github.com/bobvawter/cacheroach/api/tenant"
@@ -41,6 +42,7 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -367,6 +369,37 @@ func TestSmoke(t *testing.T) {
 			return
 		}
 		a.Equal("Hello World!", string(data))
+
+		t.Run("signed requests", func(t *testing.T) {
+			a := assert.New(t)
+			retr, err := file.NewFilesClient(rig.Conn).Retrieve(ctx,
+				&file.RetrievalRequest{
+					Path:     "/rpc.test",
+					Tenant:   tID,
+					ValidFor: durationpb.New(time.Minute),
+				}, creds)
+			if !a.NoError(err) {
+				return
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+				fmt.Sprintf("https://localhost:%d%s",
+					rig.Server.BoundAddr.(*net.TCPAddr).Port, retr.GetPath), nil)
+			if !a.NoError(err) {
+				return
+			}
+
+			resp, err := client.Do(req)
+			if !a.NoError(err) {
+				return
+			}
+			a.Equal(200, resp.StatusCode)
+
+			data, err := ioutil.ReadAll(resp.Body)
+			if !a.NoError(err) {
+				return
+			}
+			a.Equal("Hello World!", string(data))
+		})
 	})
 
 	t.Run("list my tenants", func(t *testing.T) {

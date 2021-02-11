@@ -17,6 +17,7 @@ cacheroach session delegate [flags]
       --name string            provides a per-principal name for the session to make it easy to find programmatically
       --note string            a note to further describe the session
       --on string              the type of scope being granted; one of (super, principal, tenant)
+  -o, --out string             write a configuration file for the newly-created session
       --path string            the path within a tenant being delegated (default "/*")
 ```
 

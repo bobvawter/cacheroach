@@ -14,17 +14,20 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
-
-	"context"
 
 	"github.com/bobvawter/cacheroach/api/session"
 	"github.com/bobvawter/cacheroach/api/tenant"
 	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/pkg/errors"
 	"golang.org/x/term"
+	"google.golang.org/protobuf/proto"
 )
 
 // config contains the JSON-serializable configuration data.
@@ -34,6 +37,22 @@ type config struct {
 	Insecure      bool
 	Session       *session.Session
 	Token         string
+}
+
+// clone returns a deep copy of the config.
+func (c *config) clone() *config {
+	ret := &config{
+		Host:     c.Host,
+		Insecure: c.Insecure,
+		Token:    c.Token,
+	}
+	if c.DefaultTenant != nil {
+		ret.DefaultTenant = proto.Clone(c.DefaultTenant).(*tenant.ID)
+	}
+	if c.Session != nil {
+		ret.Session = proto.Clone(c.Session).(*session.Session)
+	}
+	return ret
 }
 
 // configureHostname parses the given host as a URL and updates the Host
@@ -88,6 +107,27 @@ func (c *config) configureHostname(urlString string, requirePassword bool) (*url
 func (c *config) configureSession(sn *session.Session, tkn *token.Token) {
 	c.Session = sn
 	c.Token = tkn.Jwt
+}
+
+// writeToFile writes the configuration to disk. This method will create
+// any necessary directories.
+func (c *config) writeToFile(out string) error {
+	out, err := filepath.Abs(out)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(out, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := json.NewEncoder(f)
+	w.SetIndent("", "  ")
+	return w.Encode(c)
 }
 
 // A wrapper around a proper credentials that will disable the GRPC code

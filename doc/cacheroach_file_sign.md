@@ -1,16 +1,16 @@
-## cacheroach file ls
+## cacheroach file sign
 
-list remote files
+generate signed access URLs
 
 ```
-cacheroach file ls <remote path> ... [flags]
+cacheroach file sign <path> [ ... ] [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for ls
-  -w, --wide   print more data
+  -h, --help                help for sign
+      --validity duration   the length of time the link will be valid for (default 24h0m0s)
 ```
 
 ### Options inherited from parent commands

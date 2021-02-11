@@ -67,7 +67,7 @@ func (c *CLI) file() *cobra.Command {
 			return nil
 		},
 	}
-	top.PersistentFlags().StringVar(&tntString, "tenant", tntString,
+	top.PersistentFlags().StringVarP(&tntString, "tenant", "t", tntString,
 		"sent the tenant to use if one is not present in the logged-in scope")
 
 	var getOut string
@@ -133,6 +133,7 @@ func (c *CLI) file() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			remoteBase := args[0]
+			args = args[1:]
 			if !strings.HasPrefix(remoteBase, "/") {
 				return errors.New("the remote path must start with /")
 			}
@@ -152,8 +153,7 @@ func (c *CLI) file() *cobra.Command {
 			defer out.Close()
 			out.Printf("Path\tURL\tCode\tMessage\n")
 
-			for i := range args[1:] {
-
+			for i := range args {
 				remotePath := path.Join(remoteBase, path.Base(args[i]))
 				resp, err := up.Fetch(ctx, &upload.FetchRequest{
 					Tenant:        tnt,
@@ -230,12 +230,13 @@ func (c *CLI) file() *cobra.Command {
 	var recurse bool
 	var parallelism int
 	put := &cobra.Command{
-		Use:   "put <local file or dir> ... <remote path>",
+		Use:   "put <remote path> <local file or dir> ...",
 		Short: "upload files",
 		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			remotePath := args[len(args)-1]
+			remotePath := args[0]
+			args = args[1:]
 			if !strings.HasPrefix(remotePath, "/") {
 				return errors.New("the remote path must start with /")
 			}
@@ -248,7 +249,7 @@ func (c *CLI) file() *cobra.Command {
 			// We may not be getting called from an actual shell, so
 			// let's glob-expand the inputs.
 			var localFiles []string
-			for i := range args[:len(args)-1] {
+			for i := range args {
 				expanded, err := filepath.Glob(args[i])
 				if err != nil {
 					return err
@@ -341,12 +342,61 @@ func (c *CLI) file() *cobra.Command {
 		},
 	}
 
+	var signDuration time.Duration
+	sign := &cobra.Command{
+		Use:   "sign <path> [ ... ]",
+		Short: "generate signed access URLs",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			conn, err := c.conn(ctx)
+			if err != nil {
+				return err
+			}
+			fs := file.NewFilesClient(conn)
+
+			out := newTabs()
+			defer out.Close()
+			out.Printf("Path\tURL\n")
+
+			for i := range args {
+				retrieval, err := fs.Retrieve(ctx, &file.RetrievalRequest{
+					Path:     args[i],
+					Tenant:   tnt,
+					ValidFor: durationpb.New(signDuration),
+				})
+				if err != nil {
+					return errors.Wrap(err, args[i])
+				}
+				c.logger.Tracef("created download URL: %s", retrieval.GetPath)
+
+				u, err := url.ParseRequestURI(retrieval.GetPath)
+				if err != nil {
+					return errors.Wrap(err, args[i])
+				}
+				if c.Insecure {
+					u.Scheme = "http"
+				} else {
+					u.Scheme = "https"
+				}
+				u.Host = c.Host
+
+				out.Printf("%s\t%s\n", args[i], u)
+			}
+
+			return nil
+		},
+	}
+	sign.Flags().DurationVar(&signDuration, "validity", 24*time.Hour,
+		"the length of time the link will be valid for")
+
 	top.AddCommand(
 		get,
 		fetch,
 		ls,
 		put,
 		rm,
+		sign,
 	)
 
 	return top

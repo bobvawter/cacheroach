@@ -117,7 +117,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	vHostWrapper := rest.ProvideVHostWrapper(logger, vHostMap)
 	fileHandler := rest.ProvideFileHandler(store, enforcerEnforcer, fsStore, logger, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	healthz := rest.ProvideHealthz(pool, logger)
-	retrieve := rest.ProvideRetrieve(logger, fsStore, server)
+	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, server)
 	if err != nil {
 		cleanup6()

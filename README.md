@@ -2,9 +2,51 @@
 
 > I just want to serve five terabytes of data, across multiple cloud providers.
 
-This is the beginning of a blog post; it needs a lot more work.
+## TL;DR
+
+Cacheroach may be of interest to you if you need a multi-tenant, multi-region, multi-cloud,
+file-storage abstraction built on top of [CockroachDB](https://github.com/cockroachdb/cockroach). It
+has both an HTTP and a gRPC API, a robust security model, and can be deployed within your favorite
+serverless or containerized runtime. For users with data-domiciling needs, Cacheroach's database
+schema is built to take advantage of CockroachDB's support for geo-partitioned workloads.
 
 ![Hero image showing cacheroach deployment architecture](./doc/hero.png)
+
+## Quickstart
+
+```shell
+git clone git@github.com:bobvawter/cacheroach
+cd cacheroach
+# To build the cacheroach CLI tool
+go install 
+# Launch demo stack consisting of a CRDB node and cacheroach
+docker-compose -f docker-compose.quickstart.yml up
+# Create a root user, writing access data to root.cfg
+cacheroach -v -c root.cfg bootstrap --hmacKey @./cacheroach-data/hmac http://root@localhost:13013/
+# List tenants, should show the default scratchpad
+cacheroach -v -c root.cfg tenant ls
+# Create a working user, this will write a new configuration file.
+# You can add a --password flag to enable password-based login.
+cacheroach -v -c root.cfg principal create $USER --out $HOME/.cacheroach/config
+# Grant the new user read/write access to a tenant.
+cacheroach -v -c root.cfg session delegate --for <PRINCIPAL> --on tenant --id <TENANT> --capabilites read,write
+# Use the real user to list files
+cacheroach -v file ls -t <TENANT>
+# Set a default tenant id to minimize typing
+cacheroach tenant default <TENANT>
+# Upload the cacheroach binary
+echo "Hello World." > hello.txt
+cacheroach -v file put / hello.txt
+# Look at HTTP vhost mapping
+cacheroach -v -c root.cfg vhost ls
+# Fetch a file using the default HTTP VHost endpoint
+# Use -H "Authorization: Bearer <JWT TOKEN>" for non-public tenants.
+curl -O http://127.0.0.1:13013/cacheroach
+# Generate a signed retrieval URL.
+cacheroach file sign /hello.txt
+```
+
+See the [CLI docs](./doc/cacheroach.md) for additional information.
 
 ## Implementation details
 

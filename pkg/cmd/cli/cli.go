@@ -16,14 +16,11 @@
 package cli
 
 import (
-	"encoding/json"
-	"os"
-
-	"path/filepath"
-
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
+	"os"
 
 	"github.com/Mandala/go-log"
 	"github.com/pkg/errors"
@@ -153,18 +150,7 @@ func (c *CLI) stop(*cobra.Command, []string) error {
 		return nil
 	}
 	p := os.ExpandEnv(c.configFile)
-	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(&c.config); err != nil {
+	if err := c.config.writeToFile(p); err != nil {
 		return err
 	}
 	c.logger.Infof("wrote configuration to: %s", p)

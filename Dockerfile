@@ -16,6 +16,7 @@ RUN go mod download && \
     CGO_ENABLED=0 go build -v -ldflags="-s -w" -o /usr/bin/cacheroach .
 
 FROM scratch
+WORKDIR /data/
 ENTRYPOINT ["/usr/bin/cacheroach"]
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/bin/cacheroach /usr/bin/

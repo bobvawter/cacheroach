@@ -1,0 +1,50 @@
+# See https://docs.docker.com/docker-hub/builds/automated-testing/
+version: "3.8"
+services:
+  cockroachdb:
+    image: cockroachdb/cockroach:latest-v20.2
+    command: start-single-node --insecure
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - ./cockroach-data:/cockroach/cockroach-data
+  preflight:
+    image: busybox
+    depends_on:
+      - cockroachdb
+    volumes:
+      - ./cacheroach-data:/cacheroach-data
+    command: |
+      /bin/sh -c "
+      set -x
+      if [ ! -d /cacheroach-data/cache ]; then
+         mkdir -p /cacheroach-data/cache
+      fi
+      if [ ! -f /cacheroach-data/hmac ]; then
+        dd if=/dev/random bs=32 count=1 | base64 > /cacheroach-data/hmac
+        echo Created HMAC key
+      fi
+      # Wait for DB to start
+      while ! nc -z cockroachdb 26257; do
+        sleep 0.1
+      done
+      "
+  cacheroach:
+    #    build:
+    #      context: .
+    image: bobvawter/cacheroach:latest
+    depends_on:
+      - cockroachdb
+      - preflight
+    ports:
+      - "13013:13013"
+    volumes:
+      - ./cacheroach-data:/cacheroach-data
+    command: >
+      start
+        --bindAddr :13013
+        --cacheDir /cacheroach-data/cache
+        --connect postgresql://root@cockroachdb:26257/defaultdb
+        --signingKey @/cacheroach-data/hmac
+        --verbose
