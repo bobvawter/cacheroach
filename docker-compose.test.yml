@@ -17,7 +17,7 @@ services:
       TEST_CONNECT_STRING: "postgresql://root@cockroachdb:26257/testing"
     command: >
       /bin/sh -c "
-      go test -p 1 -race -coverpkg=./pkg/... -coverprofile=coverage.txt -covermode=atomic ./pkg/... &&
+      go test -p 1 -race -coverpkg=./api/...,./pkg/... -coverprofile=coverage.txt -covermode=atomic ./api/... ./pkg/... &&
       go fmt ./... &&
       go vet ./... &&
       go run golang.org/x/lint/golint -set_exit_status ./... &&

@@ -30,7 +30,7 @@ func TestCapabilities_IsSubsetOf(t *testing.T) {
 			all.ProtoReflect().Set(d, protoreflect.ValueOfBool(true))
 		}
 	}
-	a.Equal(int64(0b1111), all.AsBits())
+	a.Equal(int64(0b11111), all.AsBits())
 	a.False(all.Zero())
 
 	none := &Capabilities{}

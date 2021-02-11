@@ -25,6 +25,8 @@ message Capabilities {
   bool delegate = 3;
   // Grants access to personally-identifying information.
   bool pii = 4;
+  // Grants access to the server-side fetch API.
+  bool fetch = 5;
 }
 
 enum Direction {

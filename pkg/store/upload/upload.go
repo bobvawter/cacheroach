@@ -232,6 +232,13 @@ func (s *Server) Fetch(ctx context.Context, req *upload.FetchRequest) (*upload.F
 	}
 	r.Header.Add("x-cacheroach-session", sn.ID.AsUUID().String())
 
+	files := s.fs.FileSystem(req.Tenant)
+	if f, err := files.Open(req.Path); err == nil {
+		if stat, err := f.Stat(); err == nil {
+			r.Header.Add("if-modified-since", stat.ModTime().Format(http.TimeFormat))
+		}
+	}
+
 	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return nil, err
@@ -248,7 +255,7 @@ func (s *Server) Fetch(ctx context.Context, req *upload.FetchRequest) (*upload.F
 		return nil, err
 	}
 
-	err = s.fs.FileSystem(req.Tenant).Put(ctx, &fs.FileMeta{
+	err = files.Put(ctx, &fs.FileMeta{
 		Path:    req.Path,
 		Version: -1, // Overwrite.
 	}, h)

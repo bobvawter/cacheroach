@@ -89,9 +89,9 @@ message CommitResponse{}
 
 message FetchRequest {
   option (capabilities.msg_rule) = {
-    message: "must have write access to tenant and path"
+    message: "must have write and fetch access to tenant and path"
     may: {
-      capabilities: {write: true}
+      capabilities: {write: true, fetch: true}
       scope: {
         on_location: {
           tenant_id: {field: 1}
@@ -156,7 +156,7 @@ service Uploads {
     option idempotency_level = IDEMPOTENT;
   }
   rpc Fetch(FetchRequest) returns (FetchResponse) {
-    option (capabilities.method_rule).auth_status = SUPER;
+    option (capabilities.method_rule).auth_status = LOGGED_IN;
   }
   rpc Transfer(TransferRequest) returns (TransferResponse) {
     option (capabilities.method_rule).auth_status = LOGGED_IN;

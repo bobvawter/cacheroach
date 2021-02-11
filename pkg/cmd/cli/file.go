@@ -127,30 +127,46 @@ func (c *CLI) file() *cobra.Command {
 	fetchHeaders := make(map[string]string)
 	var fetchMethod string
 	fetch := &cobra.Command{
-		Use:   "fetch <remote URL> <remote path>",
+		Use:   "fetch <cacheroach path> <remote URL> ...",
 		Short: "execute an HTTP request from the server",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			conn, err := c.conn(cmd.Context())
+			ctx := cmd.Context()
+			remoteBase := args[0]
+			if !strings.HasPrefix(remoteBase, "/") {
+				return errors.New("the remote path must start with /")
+			}
+			if !strings.HasSuffix(remoteBase, "/") {
+				return errors.New(
+					"the target for an upload must " +
+						"end in a / to avoid ambiguous behavior")
+			}
+
+			conn, err := c.conn(ctx)
 			if err != nil {
 				return err
 			}
 			up := upload.NewUploadsClient(conn)
-			resp, err := up.Fetch(cmd.Context(), &upload.FetchRequest{
-				Tenant:        tnt,
-				Path:          args[1],
-				RemoteUrl:     args[0],
-				RemoteHeaders: fetchHeaders,
-				RemoteMethod:  fetchMethod,
-			})
-			if err != nil {
-				return err
-			}
-			if resp.RemoteHttpCode == 200 {
-				c.logger.Info("Success")
-			} else {
-				c.logger.Infof("Status: %d", resp.RemoteHttpCode)
-				c.logger.Infof("Message: %s", resp.RemoteHttpMessage)
+
+			out := newTabs()
+			defer out.Close()
+			out.Printf("Path\tURL\tCode\tMessage\n")
+
+			for i := range args[1:] {
+
+				remotePath := path.Join(remoteBase, path.Base(args[i]))
+				resp, err := up.Fetch(ctx, &upload.FetchRequest{
+					Tenant:        tnt,
+					Path:          remotePath,
+					RemoteUrl:     args[i],
+					RemoteHeaders: fetchHeaders,
+					RemoteMethod:  fetchMethod,
+				})
+				if err == nil {
+					out.Printf("%s\t%s\t%d\t%s\n", remotePath, args[i], resp.RemoteHttpCode, resp.RemoteHttpMessage)
+				} else {
+					out.Printf("%s\t%s\t%d\t%s\n", remotePath, args[i], 0, err.Error())
+				}
 			}
 			return nil
 		},
@@ -479,6 +495,9 @@ func (c *CLI) expand(
 	ctx context.Context, localBase, remoteBase string, recurse bool, ch chan<- *work,
 ) error {
 	return filepath.Walk(localBase, func(localFile string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		stat, err := os.Stat(localFile)
 		if err != nil {
 			return errors.Wrap(err, localFile)

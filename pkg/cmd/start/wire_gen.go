@@ -45,15 +45,17 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 		cleanup()
 		return nil, nil, err
 	}
-	store := blob.ProvideStore(cacheCache, configConfig, pool, logger)
+	store, cleanup2 := blob.ProvideStore(contextContext, cacheCache, configConfig, pool, logger)
 	tokenServer, err := token.ProvideServer(configConfig, pool, logger)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	enforcerEnforcer := enforcer.ProvideEnforcer(logger, tokenServer)
-	fsStore, cleanup2, err := fs.ProvideStore(contextContext, store, configConfig, pool, logger)
+	fsStore, cleanup3, err := fs.ProvideStore(contextContext, store, configConfig, pool, logger)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
@@ -74,13 +76,15 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	}
 	bootstrapper, err := bootstrap.ProvideBootstrap(contextContext, store, pool, fsStore, logger, principalServer, tokenServer, tenantServer, vhostServer)
 	if err != nil {
+		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	sessionWrapper := rest.ProvideSessionWrapper(bootstrapper, tokenServer)
-	vHostMap, cleanup3, err := common.ProvideVHostMap(contextContext, logger, vhostServer)
+	vHostMap, cleanup4, err := common.ProvideVHostMap(contextContext, logger, vhostServer)
 	if err != nil {
+		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
@@ -91,6 +95,7 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	retrieve := rest.ProvideRetrieve(logger, fsStore, tokenServer)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, tokenServer)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -117,6 +122,7 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	}
 	uploadServer, err := upload.ProvideServer(store, configConfig, pool, fsStore, logger)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -124,14 +130,16 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	}
 	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, elideInterceptor, vHostInterceptor, authServer, diags, fsServer, principalServer, tenantServer, tokenServer, uploadServer, vhostServer)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	mux := rest.ProvideMux(commonConfig, logger, fileHandler, healthz, retrieve, grpcServer)
-	serverServer, cleanup4, err := server.ProvideServer(contextContext, busyLatch, v, commonConfig, logger, mux, tokenServer)
+	serverServer, cleanup5, err := server.ProvideServer(contextContext, busyLatch, v, commonConfig, logger, mux, tokenServer)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -141,6 +149,7 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 		Server: serverServer,
 	}
 	return startInjector, func() {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()

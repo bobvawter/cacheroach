@@ -3,7 +3,7 @@
 execute an HTTP request from the server
 
 ```
-cacheroach file fetch <remote URL> <remote path> [flags]
+cacheroach file fetch <cacheroach path> <remote URL> ... [flags]
 ```
 
 ### Options

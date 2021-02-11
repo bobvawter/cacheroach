@@ -18,10 +18,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"io"
-	"os"
-
 	"hash"
+	"io"
+	"math"
+	"os"
+	"time"
 
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/api/tenant"
@@ -56,18 +57,27 @@ type Store struct {
 
 // ProvideStore is used by wire.
 func ProvideStore(
+	ctx context.Context,
 	cache *cache.Cache,
 	config *config.Config,
 	db *pgxpool.Pool,
 	logger *log.Logger,
-) *Store {
-	return &Store{
+) (*Store, func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	s := &Store{
 		cache:  cache,
 		config: config,
 		db:     db,
 		logger: logger,
 		sem:    semaphore.NewWeighted(int64(config.ChunkConcurrency)),
 	}
+
+	// Start a loop to monitor the cluster's read amplification. If it
+	// rises above a user-configurable threshold, we'll steal N-1
+	// semaphore entries
+	go s.backoffLoop(ctx)
+
+	return s, cancel
 }
 
 // CommitRope associates a content hash with the given rope.
@@ -141,9 +151,16 @@ loop:
 		cOff := offset
 		offset += int64(read)
 
-		if err := s.sem.Acquire(ctx, 1); err != nil {
-			return 0, err
+		// Acquire a semaphore entry in an interruptable manner.
+		for !s.sem.TryAcquire(1) {
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+				// Try again.
+			}
 		}
+
 		eg.Go(func() error {
 			err = s.ensureChunkInRope(ctx, tID, ropeID, buf[:read], cOff)
 			s.sem.Release(1)
@@ -177,6 +194,58 @@ func (s *Store) OpenBlob(ctx context.Context, tID *tenant.ID, hash Hash) (*Blob,
 	b.mu.ctx = ctx
 
 	return b, errors.Wrapf(err, "OpenBlob %s", hash)
+}
+
+// When CockroachDB experiences a heavy write workload, the compaction
+// process can back up if there's insufficient disk throughput
+// available. This function monitors the cluster's current level of read
+// amplification, which serves as a useful proxy metric for detecting an
+// overloaded cluster.
+func (s *Store) backoffLoop(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	backingOff := false
+
+	update := func() {
+		row := s.db.QueryRow(ctx,
+			"SELECT max(metrics->'rocksdb.read-amplification') FROM crdb_internal.kv_store_status")
+
+		var ampf float64
+		if err := row.Scan(&ampf); err != nil {
+			s.logger.Warnf("could not measure cluster read amplification: %v", err)
+			return
+		}
+		amp := int(math.Ceil(ampf))
+
+		if amp <= s.config.ReadAmplificationBackoff {
+			if backingOff {
+				backingOff = false
+				s.sem.Release(int64(s.config.ChunkConcurrency - 1))
+				s.logger.Infof("read amplification recovered")
+			}
+			return
+		}
+
+		if backingOff {
+			s.logger.Warnf("still backing off due to read amplification %d vs %d",
+				amp, s.config.ReadAmplificationBackoff)
+		} else {
+			s.logger.Warnf("backing off due to read amplification %d vs %d",
+				amp, s.config.ReadAmplificationBackoff)
+			backingOff = true
+			s.sem.Acquire(ctx, int64(s.config.ChunkConcurrency-1))
+		}
+	}
+
+	for {
+		update()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 // ensureChunk inserts the given chunks of data, returning the content hash.

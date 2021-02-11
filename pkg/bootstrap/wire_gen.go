@@ -42,9 +42,10 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	store := blob.ProvideStore(cacheCache, configConfig, pool, logger)
-	fsStore, cleanup4, err := fs.ProvideStore(ctx, store, configConfig, pool, logger)
+	store, cleanup4 := blob.ProvideStore(ctx, cacheCache, configConfig, pool, logger)
+	fsStore, cleanup5, err := fs.ProvideStore(ctx, store, configConfig, pool, logger)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -57,6 +58,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	tokenServer, err := token.ProvideServer(configConfig, pool, logger)
 	if err != nil {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()
@@ -73,6 +75,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	bootstrapper, err := ProvideBootstrap(ctx, store, pool, fsStore, logger, server, tokenServer, tenantServer, vhostServer)
 	if err != nil {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()
@@ -83,6 +86,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		Bootstrapper: bootstrapper,
 	}
 	return bootstrapRig, func() {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()

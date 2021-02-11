@@ -62,17 +62,19 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	store := blob.ProvideStore(cacheCache, configConfig, pool, logger)
+	store, cleanup4 := blob.ProvideStore(ctx, cacheCache, configConfig, pool, logger)
 	server, err := token.ProvideServer(configConfig, pool, logger)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	enforcerEnforcer := enforcer.ProvideEnforcer(logger, server)
-	fsStore, cleanup4, err := fs.ProvideStore(ctx, store, configConfig, pool, logger)
+	fsStore, cleanup5, err := fs.ProvideStore(ctx, store, configConfig, pool, logger)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -95,6 +97,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	bootstrapper, err := bootstrap.ProvideBootstrap(ctx, store, pool, fsStore, logger, principalServer, server, tenantServer, vhostServer)
 	if err != nil {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()
@@ -102,8 +105,9 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		return nil, nil, err
 	}
 	sessionWrapper := rest.ProvideSessionWrapper(bootstrapper, server)
-	vHostMap, cleanup5, err := common.ProvideVHostMap(ctx, logger, vhostServer)
+	vHostMap, cleanup6, err := common.ProvideVHostMap(ctx, logger, vhostServer)
 	if err != nil {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()
@@ -116,6 +120,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	retrieve := rest.ProvideRetrieve(logger, fsStore, server)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, server)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -144,6 +149,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	uploadServer, err := upload.ProvideServer(store, configConfig, pool, fsStore, logger)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -153,6 +159,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, elideInterceptor, vHostInterceptor, authServer, diags, fsServer, principalServer, tenantServer, server, uploadServer, vhostServer)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -161,8 +168,9 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		return nil, nil, err
 	}
 	mux := rest.ProvideMux(config, logger, fileHandler, healthz, retrieve, grpcServer)
-	serverServer, cleanup6, err := ProvideServer(ctx, busyLatch, v, config, logger, mux, server)
+	serverServer, cleanup7, err := ProvideServer(ctx, busyLatch, v, config, logger, mux, server)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -179,6 +187,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		vhosts:     vhostServer,
 	}
 	return serverRig, func() {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()

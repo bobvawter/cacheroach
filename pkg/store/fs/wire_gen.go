@@ -39,9 +39,10 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	store := blob.ProvideStore(cacheCache, configConfig, pool, logger)
-	fsStore, cleanup4, err := ProvideStore(ctx, store, configConfig, pool, logger)
+	store, cleanup4 := blob.ProvideStore(ctx, cacheCache, configConfig, pool, logger)
+	fsStore, cleanup5, err := ProvideStore(ctx, store, configConfig, pool, logger)
 	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -64,6 +65,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		svr: fsServer,
 	}
 	return fsRig, func() {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()

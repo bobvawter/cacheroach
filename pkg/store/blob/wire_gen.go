@@ -38,7 +38,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	store := ProvideStore(cacheCache, configConfig, pool, logger)
+	store, cleanup4 := ProvideStore(ctx, cacheCache, configConfig, pool, logger)
 	server := &tenant.Server{
 		DB:     pool,
 		Logger: logger,
@@ -49,6 +49,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		tenants: server,
 	}
 	return blobRig, func() {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()

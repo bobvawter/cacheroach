@@ -43,6 +43,9 @@ type Config struct {
 	PurgeDuration time.Duration
 	// The deletion batch size to use when purging old data.
 	PurgeLimit int
+	// If any of the nodes in the cluster report read amplification
+	// above this threshold, we'll (effectively) lower ChunkConcurrency.
+	ReadAmplificationBackoff int
 	// Keys for validating HMAC-based JWT tokens. The zeroth entry will
 	// be used to sign new tokens.
 	SigningKeys [][]byte
@@ -67,6 +70,8 @@ func (c *Config) Bind(flags *pflag.FlagSet) {
 		"the length of time for which deleted data should be retained; set to 0 to disable")
 	flags.IntVar(&c.PurgeLimit, "purgeLimit", 1000,
 		"the deletion batch size to use when purging old data; set to 0 to disable")
+	flags.IntVar(&c.ReadAmplificationBackoff, "readAmplificationBackoff", 10,
+		"slow chunk insertions if the CockroachDB cluster's read amplification rises above this")
 	flags.StringSliceVar(&c.signingKeys, "signingKey", nil,
 		"a base64-encoded HMAC signing key or @/path/to/base64.key")
 	flags.DurationVar(&c.UploadTimeout, "uploadTimeout", time.Hour,

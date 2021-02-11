@@ -98,7 +98,7 @@ func ProvideFileHandler(
 			}
 			w.WriteHeader(http.StatusOK)
 
-		case http.MethodGet:
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
 			if ok, err := check(&capabilities.Capabilities{Read: true}); err != nil {
 				logger.Errorf("%s %v", req.URL, err)
 				w.WriteHeader(http.StatusInternalServerError)

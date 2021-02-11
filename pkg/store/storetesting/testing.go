@@ -72,13 +72,14 @@ func ProvideStoreConfig() (*config.Config, error) {
 	conn = fmt.Sprintf("%s_%d", conn, time.Now().UnixNano())
 
 	return &config.Config{
-		AOST:             -1 * time.Microsecond,
-		ChunkConcurrency: 16,
-		ChunkSize:        512 * 1024,
-		ConnectString:    conn,
-		PurgeLimit:       10000,
-		SigningKeys:      [][]byte{[]byte("SoupOrSecret")},
-		UploadTimeout:    time.Hour,
+		AOST:                     -1 * time.Microsecond,
+		ChunkConcurrency:         16,
+		ChunkSize:                512 * 1024,
+		ConnectString:            conn,
+		PurgeLimit:               10000,
+		ReadAmplificationBackoff: 10,
+		SigningKeys:              [][]byte{[]byte("SoupOrSecret")},
+		UploadTimeout:            time.Hour,
 	}, nil
 }
 
