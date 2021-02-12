@@ -48,15 +48,15 @@ func (c *CLI) file() *cobra.Command {
 		Use:   "file",
 		Short: "file operations",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if c.DefaultTenant != nil {
+				tnt = c.DefaultTenant
+			}
 			var err error
 			if tntString != "" {
 				tnt, err = tenant.ParseID(tntString)
 				if err != nil {
 					return err
 				}
-			}
-			if c.DefaultTenant != nil {
-				tnt = c.DefaultTenant
 			}
 			if tnt == nil {
 				tnt = c.config.Session.GetScope().GetOnLocation().GetTenantId()
