@@ -72,7 +72,6 @@ func ProvideStoreConfig() (*config.Config, error) {
 	conn = fmt.Sprintf("%s_%d", conn, time.Now().UnixNano())
 
 	return &config.Config{
-		AOST:                     -1 * time.Microsecond,
 		ChunkConcurrency:         16,
 		ChunkSize:                512 * 1024,
 		ConnectString:            conn,

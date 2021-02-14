@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"fmt"
 	"hash"
 	"io"
 	"math"
@@ -303,14 +302,13 @@ func (s *Store) loadRopeMeta(
 		return meta, nil
 	}
 
-	q := "SELECT chunk, chunk_length, off FROM ropes"
-	if aost {
-		q += fmt.Sprintf(" AS OF SYSTEM TIME '%s'", s.config.AOST)
-	}
-	q += " WHERE hash = $1 AND tenant = $2 ORDER BY off ASC"
-
 	err := util.Retry(ctx, func(ctx context.Context) error {
-		rows, err := s.db.Query(ctx, q, hash[:], tID)
+		rows, err := s.db.Query(ctx,
+			"SELECT chunk, chunk_length, off "+
+				"FROM ropes "+
+				"WHERE hash = $1 AND tenant = $2 "+
+				"ORDER BY off ASC",
+			hash[:], tID)
 		if err != nil {
 			return err
 		}

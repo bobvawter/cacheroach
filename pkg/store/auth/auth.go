@@ -25,7 +25,6 @@ import (
 	"github.com/bobvawter/cacheroach/api/principal"
 	"github.com/bobvawter/cacheroach/api/session"
 	"github.com/bobvawter/cacheroach/api/token"
-	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/util"
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v4"
@@ -47,7 +46,6 @@ var (
 
 // Server implements the auth.AuthServer API.
 type Server struct {
-	Config                *config.Config
 	DB                    *pgxpool.Pool
 	Principals            principal.PrincipalsServer
 	Tokens                token.TokensServer
@@ -70,7 +68,6 @@ func (s *Server) Login(ctx context.Context, req *auth.LoginRequest) (*auth.Login
 				"FROM principals "+
 				"INNER JOIN principal_handles "+
 				"ON principals.principal = principal_handles.principal "+
-				fmt.Sprintf("AS OF SYSTEM TIME '%s' ", s.Config.AOST)+
 				"WHERE principal_handles.urn = $1", u.String())
 
 		id = &principal.ID{}

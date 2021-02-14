@@ -30,8 +30,6 @@ import (
 
 // Config contains the various pieces of data used by the store code.
 type Config struct {
-	// The AS OF SYSTEM TIME offset for read-only queries.
-	AOST time.Duration
 	// Used to limit concurrent DB operations at the chunk level.
 	ChunkConcurrency int
 	// The ideal size of a chunk.
@@ -57,8 +55,6 @@ type Config struct {
 
 // Bind adds to the given flag set and
 func (c *Config) Bind(flags *pflag.FlagSet) {
-	flags.DurationVar(&c.AOST, "aost", -5*time.Second,
-		"the AS OF SYSTEM TIME for immutable queries")
 	flags.IntVar(&c.ChunkConcurrency, "chunkConcurrency", 16,
 		"the number of concurrent chunk operations")
 	flags.IntVar(&c.ChunkSize, "chunkSize", 512*1024,

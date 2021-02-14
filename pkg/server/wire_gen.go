@@ -136,7 +136,6 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		Mapper: vHostMap,
 	}
 	authServer := &auth.Server{
-		Config:     configConfig,
 		DB:         pool,
 		Principals: principalServer,
 		Tokens:     server,

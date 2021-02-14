@@ -35,7 +35,6 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		return nil, nil, err
 	}
 	authServer := &Server{
-		Config:     config,
 		DB:         pool,
 		Principals: server,
 		Tokens:     tokenServer,

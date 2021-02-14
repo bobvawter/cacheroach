@@ -19,8 +19,6 @@ import (
 	"path"
 	"time"
 
-	"fmt"
-
 	"github.com/bobvawter/cacheroach/api/capabilities"
 	"github.com/bobvawter/cacheroach/api/file"
 	"github.com/bobvawter/cacheroach/api/session"
@@ -78,10 +76,7 @@ func (s *Server) List(ctx context.Context, req *file.ListRequest) (*file.ListRes
 	// sub-query against the ropes table to find the offset and length
 	// of the last chunk of the file in order to compute the file's
 	// total length. The use of join hints is belt-and-suspenders.
-	//
-	// Additionally, placeholders not supported in AOST:
-	// https://github.com/cockroachdb/cockroach/issues/30955
-	q := `
+	const q = `
 WITH
 latest_version AS (
   SELECT tenant, path, max(version) AS version
@@ -114,9 +109,7 @@ rope_length AS (
 SELECT path, version, ctime, meta, mtime, IFNULL(size, 0)
 FROM data
 LEFT JOIN rope_length USING (tenant, hash)
-AS OF SYSTEM TIME '%s'
 `
-	q = fmt.Sprintf(q, s.Config.AOST)
 
 	rows, err := s.DB.Query(ctx, q,
 		req.Tenant, p, p+"/%", req.GetCursor().GetAfter(), when, listLimit)

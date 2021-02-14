@@ -109,7 +109,6 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 		Mapper: vHostMap,
 	}
 	authServer := &auth.Server{
-		Config:     configConfig,
 		DB:         pool,
 		Principals: principalServer,
 		Tokens:     tokenServer,

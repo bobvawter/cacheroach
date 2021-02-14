@@ -15,7 +15,6 @@ package token
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/Mandala/go-log"
@@ -379,10 +378,9 @@ func (s *Server) Refresh(ctx context.Context, _ *emptypb.Empty) (*token.IssueRes
 func (s *Server) Validate(ctx context.Context, t *token.Token) (*session.Session, error) {
 	var err error
 	var ret *session.Session
-	var clm *claims.Claims
 
 	for i := range s.config.SigningKeys {
-		clm, ret, err = claims.Validate(t.Jwt, s.config.SigningKeys[i])
+		_, ret, err = claims.Validate(t.Jwt, s.config.SigningKeys[i])
 		if err == nil {
 			break
 		}
@@ -403,13 +401,12 @@ func (s *Server) Validate(ctx context.Context, t *token.Token) (*session.Session
 		s.cache.Remove(ret.ID.AsUUID())
 	}
 
-	if !ret.ID.Zero() && clm.IssuedAt.Before(time.Now().Add(s.config.AOST)) {
+	if !ret.ID.Zero() {
 		if err := util.Retry(ctx, func(ctx context.Context) error {
 			var count int
 			err := s.db.QueryRow(ctx,
 				"SELECT count(*) "+
 					"FROM sessions "+
-					fmt.Sprintf("AS OF SYSTEM TIME '%s'", s.config.AOST)+
 					"WHERE session = $1 AND expires_at > now()",
 				ret.ID.AsUUID().String(),
 			).Scan(&count)

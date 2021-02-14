@@ -18,7 +18,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -297,14 +296,10 @@ func (b *Blob) loadChunkLocked(
 		return
 	}
 
-	q := "SELECT data FROM chunks"
-	if aost {
-		q += fmt.Sprintf(" AS OF SYSTEM TIME '%s'", b.config.AOST)
-	}
-	q += " WHERE chunk = $1 AND tenant = $2"
-
 	err = util.Retry(ctx, func(ctx context.Context) error {
-		row := b.db.QueryRow(ctx, q, chunk[:], b.tID)
+		row := b.db.QueryRow(ctx,
+			"SELECT data FROM chunks WHERE chunk = $1 AND tenant = $2",
+			chunk[:], b.tID)
 		return row.Scan(&data)
 	})
 	err = errors.Wrapf(err, "loadChunk %s", chunk)
