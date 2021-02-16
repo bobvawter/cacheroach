@@ -25,28 +25,17 @@ import (
 	"github.com/bobvawter/cacheroach/api/vhost"
 	"github.com/bobvawter/cacheroach/pkg/bootstrap"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
-	"github.com/bobvawter/latch"
 )
 
 // A Wrapper alters the behavior of an http.Handler.
 type Wrapper func(http.Handler) http.Handler
-
-// BusyLatch holds a latch.Counter when there is an active request.
-type BusyLatch struct {
-	*latch.Counter
-}
-
-// ProvideBusyLatch is called by wire.
-func ProvideBusyLatch() *BusyLatch {
-	return &BusyLatch{latch.New()}
-}
 
 // LatchWrapper holds and releases a latch when its enclosed handler is
 // active.
 type LatchWrapper Wrapper
 
 // ProvideLatchWrapper is called by wire.
-func ProvideLatchWrapper(latch *BusyLatch) LatchWrapper {
+func ProvideLatchWrapper(latch common.BusyLatch) LatchWrapper {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			latch.Hold()

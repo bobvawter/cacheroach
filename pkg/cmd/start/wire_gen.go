@@ -11,6 +11,7 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/bootstrap"
 	"github.com/bobvawter/cacheroach/pkg/cache"
 	"github.com/bobvawter/cacheroach/pkg/enforcer"
+	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/server"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
@@ -26,17 +27,20 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/store/token"
 	"github.com/bobvawter/cacheroach/pkg/store/upload"
 	"github.com/bobvawter/cacheroach/pkg/store/vhost"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Injectors from injector.go:
 
 func newInjector(contextContext context.Context, cacheConfig *cache.Config, configConfig *config.Config, commonConfig *common.Config, logger *log.Logger) (*injector, func(), error) {
-	busyLatch := rest.ProvideBusyLatch()
+	registry := prometheus.NewPedanticRegistry()
+	factory := metrics.ProvideFactory(registry)
+	busyLatch := common.ProvideBusyLatch(factory)
 	v, err := server.ProvideCertificates(commonConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	cacheCache, cleanup, err := cache.ProvideCache(contextContext, cacheConfig, logger)
+	cacheCache, cleanup, err := cache.ProvideCache(contextContext, factory, cacheConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -91,6 +95,8 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	}
 	vHostWrapper := rest.ProvideVHostWrapper(logger, vHostMap)
 	fileHandler := rest.ProvideFileHandler(store, enforcerEnforcer, fsStore, logger, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
+	wrapper := metrics.ProvideWrapper(factory)
+	handler := metrics.ProvideMetricsHandler(logger, registry, registry)
 	healthz := rest.ProvideHealthz(pool, logger)
 	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, tokenServer)
@@ -101,9 +107,13 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 		cleanup()
 		return nil, nil, err
 	}
+	busyInterceptor := &rpc.BusyInterceptor{
+		BusyLatch: busyLatch,
+	}
 	elideInterceptor := &rpc.ElideInterceptor{
 		Enforcer: enforcerEnforcer,
 	}
+	interceptor := metrics.ProvideInterceptor(factory)
 	vHostInterceptor := &rpc.VHostInterceptor{
 		Logger: logger,
 		Mapper: vHostMap,
@@ -127,7 +137,7 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 		cleanup()
 		return nil, nil, err
 	}
-	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, elideInterceptor, vHostInterceptor, authServer, diags, fsServer, principalServer, tenantServer, tokenServer, uploadServer, vhostServer)
+	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, busyInterceptor, elideInterceptor, interceptor, vHostInterceptor, authServer, diags, fsServer, principalServer, tenantServer, tokenServer, uploadServer, vhostServer)
 	if err != nil {
 		cleanup4()
 		cleanup3()
@@ -135,8 +145,8 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 		cleanup()
 		return nil, nil, err
 	}
-	mux := rest.ProvideMux(commonConfig, logger, fileHandler, healthz, retrieve, grpcServer)
-	serverServer, cleanup5, err := server.ProvideServer(contextContext, busyLatch, v, commonConfig, logger, mux, tokenServer)
+	mux := rest.ProvideMux(commonConfig, logger, fileHandler, wrapper, handler, healthz, retrieve, grpcServer)
+	serverServer, cleanup5, err := server.ProvideServer(contextContext, busyLatch, v, commonConfig, logger, mux)
 	if err != nil {
 		cleanup4()
 		cleanup3()

@@ -15,7 +15,28 @@
 // RPC interfaces.
 package common
 
-import "github.com/google/wire"
+import (
+	"github.com/bobvawter/latch"
+	"github.com/google/wire"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
 
 // Set is used by wire.
-var Set = wire.NewSet(ProvideVHostMap)
+var Set = wire.NewSet(
+	ProvideBusyLatch,
+	ProvideVHostMap,
+)
+
+// BusyLatch holds a latch.Counter when there is an active request.
+type BusyLatch struct{ *latch.Counter }
+
+// ProvideBusyLatch is called by wire.
+func ProvideBusyLatch(auto promauto.Factory) BusyLatch {
+	ret := latch.New()
+	auto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "busy_latch_count",
+		Help: "the number of currently-active requests",
+	}, func() float64 { return float64(ret.Count()) })
+	return BusyLatch{ret}
+}

@@ -27,6 +27,7 @@ import (
 	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/bobvawter/cacheroach/api/upload"
 	"github.com/bobvawter/cacheroach/api/vhost"
+	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/google/wire"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -36,8 +37,9 @@ import (
 var Set = wire.NewSet(
 	ProvideAuthInterceptor,
 	ProvideRPC,
-	wire.Struct(new(VHostInterceptor), "*"),
+	wire.Struct(new(BusyInterceptor), "*"),
 	wire.Struct(new(ElideInterceptor), "*"),
+	wire.Struct(new(VHostInterceptor), "*"),
 )
 
 // ProvideRPC attaches all of the service implementations to a
@@ -45,7 +47,9 @@ var Set = wire.NewSet(
 func ProvideRPC(
 	log *log.Logger,
 	security *AuthInterceptor,
+	busy *BusyInterceptor,
 	elide *ElideInterceptor,
+	met *metrics.Interceptor,
 	vh *VHostInterceptor,
 	ath auth.AuthServer,
 	dia diag.DiagsServer,
@@ -67,6 +71,8 @@ func ProvideRPC(
 				})
 				return
 			},
+			busy.Unary,
+			met.Unary,
 			security.Unary,
 			vh.Unary,
 			elide.Unary,
@@ -81,6 +87,8 @@ func ProvideRPC(
 				})
 				return
 			},
+			busy.Stream,
+			met.Stream,
 			security.Stream,
 			vh.Stream,
 			elide.Stream,

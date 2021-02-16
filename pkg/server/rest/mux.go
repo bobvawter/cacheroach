@@ -21,6 +21,7 @@ import (
 	"context"
 
 	"github.com/Mandala/go-log"
+	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
 	"google.golang.org/grpc"
@@ -36,16 +37,20 @@ func ProvideMux(
 	cfg *common.Config,
 	logger *log.Logger,
 	fileHandler FileHandler,
+	measure metrics.Wrapper,
+	metrics metrics.Handler,
 	healthz Healthz,
 	retrieve Retrieve,
 	rpc *grpc.Server,
 ) *Mux {
+	fileHandler = measure(fileHandler, "files")
+	retrieve = measure(retrieve, "files")
 	mux := http.NewServeMux()
 
 	if cfg.FilesOnly {
 		mux.Handle("/_/v0/retrieve/", retrieve)
 		mux.Handle("/_/", http.NotFoundHandler())
-		mux.Handle("/", fileHandler)
+		mux.Handle("/", measure(fileHandler, "fileHandler"))
 		logger.Info("not binding RPC endpoints")
 	} else {
 		mux.HandleFunc("/_/debug/pprof/", pprof.Index)
@@ -54,7 +59,8 @@ func ProvideMux(
 		mux.HandleFunc("/_/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/_/debug/pprof/trace", pprof.Trace)
 		mux.Handle("/_/healthz", healthz)
-		mux.Handle("/_/v0/retrieve/", retrieve)
+		mux.Handle("/_/metrics", metrics)
+		mux.Handle("/_/v0/retrieve/", measure(retrieve, "retrieve"))
 		mux.Handle("/_/", http.NotFoundHandler())
 
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
