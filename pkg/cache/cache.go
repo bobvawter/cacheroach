@@ -27,12 +27,15 @@ import (
 	mathrand "math/rand"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/Mandala/go-log"
 	bigcache "github.com/allegro/bigcache/v3"
 	"github.com/google/wire"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/spf13/pflag"
 )
 
@@ -72,28 +75,73 @@ type Cache struct {
 	logger *log.Logger
 	cfg    *Config
 	mem    *bigcache.BigCache
+
+	diskHits, diskMisses, fnHits, fnMisses, puts prometheus.Counter
+	diskUsage                                    prometheus.Gauge
 }
 
 // ProvideCache is called by wire.
 func ProvideCache(
 	ctx context.Context,
+	auto promauto.Factory,
 	cfg *Config,
 	logger *log.Logger,
 ) (*Cache, func(), error) {
 	cacheCfg := bigcache.DefaultConfig(time.Hour)
 	cacheCfg.HardMaxCacheSize = cfg.MaxMem
 	cacheCfg.Shards = 128
+	cacheCfg.StatsEnabled = true
 	cacheCfg.Logger = &logWrapper{logger}
 
 	mem, err := bigcache.NewBigCache(cacheCfg)
 	if err != nil {
 		return nil, nil, err
 	}
+	auto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cache_mem_entry_count",
+		Help: "number of entries in the memory cache",
+	}, func() float64 { return float64(mem.Len()) })
+	auto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cache_mem_hit_count",
+		Help: "number of successful memory cache lookups",
+	}, func() float64 { return float64(mem.Stats().Hits) })
+	auto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cache_mem_miss_count",
+		Help: "number of successful memory cache lookups",
+	}, func() float64 { return float64(mem.Stats().Misses) })
+	auto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cache_disk_limit_bytes",
+		Help: "the ideal disk cache size",
+	}, func() float64 { return float64(cfg.MaxDisk * 1024 * 1024) })
 
 	c := &Cache{
 		cfg:    cfg,
 		logger: logger,
 		mem:    mem,
+		diskHits: auto.NewCounter(prometheus.CounterOpts{
+			Name: "cache_disk_hit_count",
+			Help: "number of successful disk cache lookups",
+		}),
+		diskMisses: auto.NewCounter(prometheus.CounterOpts{
+			Name: "cache_disk_miss_count",
+			Help: "number of disk cache misses",
+		}),
+		diskUsage: auto.NewGauge(prometheus.GaugeOpts{
+			Name: "cache_disk_used_bytes",
+			Help: "the estimated size of the disk cache",
+		}),
+		fnHits: auto.NewCounter(prometheus.CounterOpts{
+			Name: "cache_fn_hit_count",
+			Help: "number of third-level cache hits",
+		}),
+		fnMisses: auto.NewCounter(prometheus.CounterOpts{
+			Name: "cache_fn_miss_count",
+			Help: "number of third-level cache misses",
+		}),
+		puts: auto.NewCounter(prometheus.CounterOpts{
+			Name: "cache_put_count",
+			Help: "number of calls to put()",
+		}),
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -101,6 +149,12 @@ func ProvideCache(
 		defer mem.Close()
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
+
+		var purgeTime int64
+		auto.NewCounterFunc(prometheus.CounterOpts{
+			Name: "cache_purge_time",
+			Help: "the last wall time the a cache purge occurred",
+		}, func() float64 { return float64(atomic.LoadInt64(&purgeTime)) })
 
 		for {
 			select {
@@ -112,6 +166,7 @@ func ProvideCache(
 				} else {
 					logger.Warnf("could not prune disk cache: %v", err)
 				}
+				atomic.StoreInt64(&purgeTime, time.Now().Unix())
 			}
 		}
 	}()
@@ -124,18 +179,32 @@ func ProvideCache(
 func (c *Cache) Get(key string, val interface{}) bool {
 	var storeMem, storeDisk bool
 	data, err := c.mem.Get(key)
-	if err != nil {
-		data, err = c.load(key)
-		storeMem = true
+	if err == nil {
+		goto hit
 	}
-	if fn := c.cfg.OnMiss; err != nil && fn != nil {
+
+	storeMem = true
+	data, err = c.load(key)
+	if err == nil {
+		c.diskHits.Inc()
+		goto hit
+	}
+	c.diskMisses.Inc()
+
+	if fn := c.cfg.OnMiss; fn != nil {
 		data, err = fn(key)
 		storeDisk = true
+		if err == nil {
+			c.fnHits.Inc()
+			goto hit
+		}
+		c.fnMisses.Inc()
 	}
-	if err != nil {
-		c.logger.Tracef("cache miss on %s: %v", key, err)
-		return false
-	}
+
+	c.logger.Tracef("cache miss on %s: %v", key, err)
+	return false
+
+hit:
 	if storeDisk {
 		if err := c.store(key, data); err != nil {
 			c.logger.Tracef("could not transfer %s to disk: %v", key, err)
@@ -174,6 +243,8 @@ func (c *Cache) Get(key string, val interface{}) bool {
 // Put stores a value into the Cache. The value must be a []byte,
 // string, or an object which implements encoding.BinaryMarshaler.
 func (c *Cache) Put(key string, val interface{}) {
+	c.puts.Inc()
+
 	var data []byte
 	switch t := val.(type) {
 	case nil:
@@ -252,6 +323,7 @@ func (c *Cache) Prune() (n int, err error) {
 	if err != nil || len(toDelete) == 0 {
 		return
 	}
+	c.diskUsage.Set(float64(totalSize))
 
 	// Pick a target size of 80% and convert the MB's to bytes.
 	target := int64(c.cfg.MaxDisk) * 8 / 10 * 1024 * 1024

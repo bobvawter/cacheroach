@@ -26,7 +26,6 @@ import (
 	"crypto/x509"
 
 	"github.com/Mandala/go-log"
-	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
 	"github.com/bobvawter/cacheroach/pkg/server/rest"
@@ -59,12 +58,11 @@ type Server struct {
 // ProvideServer constructs a new Server.
 func ProvideServer(
 	ctx context.Context,
-	busyLatch *rest.BusyLatch,
+	busyLatch common.BusyLatch,
 	certificates []tls.Certificate,
 	cfg *common.Config,
 	logger *log.Logger,
 	mux *rest.Mux,
-	tokens token.TokensServer,
 ) (*Server, func(), error) {
 	var tlsConfig *tls.Config
 	if len(certificates) > 0 {

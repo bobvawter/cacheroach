@@ -24,6 +24,7 @@ import (
 
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/pkg/cache"
+	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/schema"
 	"github.com/google/wire"
@@ -36,6 +37,7 @@ var (
 	Logger = log.New(os.Stdout).WithDebug().WithoutColor()
 	Set    = wire.NewSet(
 		cache.Set,
+		metrics.Set,
 		ProvideCacheConfig,
 		ProvideStoreConfig,
 		ProvideDB,

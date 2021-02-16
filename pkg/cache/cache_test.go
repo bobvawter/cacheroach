@@ -49,7 +49,7 @@ func TestCache(t *testing.T) {
 		},
 	}
 
-	c, cleanup, err := ProvideCache(ctx, cfg, logger)
+	c, cleanup, err := testRig(ctx, cfg, logger)
 	if !a.NoError(err) {
 		return
 	}

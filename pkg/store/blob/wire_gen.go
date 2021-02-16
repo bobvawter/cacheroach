@@ -8,20 +8,24 @@ package blob
 import (
 	"context"
 	"github.com/bobvawter/cacheroach/pkg/cache"
+	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
 	"github.com/bobvawter/cacheroach/pkg/store/tenant"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Injectors from test_rig.go:
 
 func testRig(ctx context.Context) (*rig, func(), error) {
+	registry := prometheus.NewPedanticRegistry()
+	factory := metrics.ProvideFactory(registry)
 	config, cleanup, err := storetesting.ProvideCacheConfig()
 	if err != nil {
 		return nil, nil, err
 	}
 	logger := _wireLoggerValue
-	cacheCache, cleanup2, err := cache.ProvideCache(ctx, config, logger)
+	cacheCache, cleanup2, err := cache.ProvideCache(ctx, factory, config, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

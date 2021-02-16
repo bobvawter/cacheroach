@@ -13,42 +13,28 @@
 
 //+build wireinject
 
-package start
+package cache
 
 import (
 	"context"
 
 	"github.com/Mandala/go-log"
-	"github.com/bobvawter/cacheroach/pkg/bootstrap"
-	"github.com/bobvawter/cacheroach/pkg/cache"
-	"github.com/bobvawter/cacheroach/pkg/enforcer"
 	"github.com/bobvawter/cacheroach/pkg/metrics"
-	"github.com/bobvawter/cacheroach/pkg/server"
-	"github.com/bobvawter/cacheroach/pkg/server/common"
-	"github.com/bobvawter/cacheroach/pkg/store"
-	"github.com/bobvawter/cacheroach/pkg/store/config"
-	"github.com/bobvawter/cacheroach/pkg/store/storeproduction"
 	"github.com/google/wire"
 )
 
-type injector struct {
-	Server *server.Server
+type rig struct {
+	*Cache
 }
 
-func newInjector(
-	context.Context,
-	*cache.Config,
-	*config.Config,
-	*common.Config,
-	*log.Logger,
-) (*injector, func(), error) {
+func testRig(
+	ctx context.Context,
+	cfg *Config,
+	logger *log.Logger,
+) (*rig, func(), error) {
 	panic(wire.Build(
-		bootstrap.Set,
-		enforcer.Set,
+		Set,
 		metrics.Set,
-		server.Set,
-		store.Set,
-		storeproduction.Set,
-		wire.Struct(new(injector), "*"),
+		wire.Struct(new(rig), "*"),
 	))
 }

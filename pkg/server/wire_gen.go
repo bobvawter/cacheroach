@@ -15,6 +15,7 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/bootstrap"
 	"github.com/bobvawter/cacheroach/pkg/cache"
 	"github.com/bobvawter/cacheroach/pkg/enforcer"
+	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
 	"github.com/bobvawter/cacheroach/pkg/server/rest"
@@ -28,13 +29,16 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/store/token"
 	"github.com/bobvawter/cacheroach/pkg/store/upload"
 	"github.com/bobvawter/cacheroach/pkg/store/vhost"
+	"github.com/prometheus/client_golang/prometheus"
 	"time"
 )
 
 // Injectors from test_rig.go:
 
 func testRig(ctx context.Context) (*rig, func(), error) {
-	busyLatch := rest.ProvideBusyLatch()
+	registry := prometheus.NewPedanticRegistry()
+	factory := metrics.ProvideFactory(registry)
+	busyLatch := common.ProvideBusyLatch(factory)
 	config := _wireConfigValue
 	logger := _wireLoggerValue
 	v, err := ProvideCertificates(config, logger)
@@ -45,7 +49,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cacheCache, cleanup2, err := cache.ProvideCache(ctx, cacheConfig, logger)
+	cacheCache, cleanup2, err := cache.ProvideCache(ctx, factory, cacheConfig, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -116,6 +120,8 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	vHostWrapper := rest.ProvideVHostWrapper(logger, vHostMap)
 	fileHandler := rest.ProvideFileHandler(store, enforcerEnforcer, fsStore, logger, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
+	wrapper := metrics.ProvideWrapper(factory)
+	handler := metrics.ProvideMetricsHandler(logger, registry, registry)
 	healthz := rest.ProvideHealthz(pool, logger)
 	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, server)
@@ -128,9 +134,13 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
+	busyInterceptor := &rpc.BusyInterceptor{
+		BusyLatch: busyLatch,
+	}
 	elideInterceptor := &rpc.ElideInterceptor{
 		Enforcer: enforcerEnforcer,
 	}
+	interceptor := metrics.ProvideInterceptor(factory)
 	vHostInterceptor := &rpc.VHostInterceptor{
 		Logger: logger,
 		Mapper: vHostMap,
@@ -156,7 +166,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, elideInterceptor, vHostInterceptor, authServer, diags, fsServer, principalServer, tenantServer, server, uploadServer, vhostServer)
+	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, busyInterceptor, elideInterceptor, interceptor, vHostInterceptor, authServer, diags, fsServer, principalServer, tenantServer, server, uploadServer, vhostServer)
 	if err != nil {
 		cleanup6()
 		cleanup5()
@@ -166,8 +176,8 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	mux := rest.ProvideMux(config, logger, fileHandler, healthz, retrieve, grpcServer)
-	serverServer, cleanup7, err := ProvideServer(ctx, busyLatch, v, config, logger, mux, server)
+	mux := rest.ProvideMux(config, logger, fileHandler, wrapper, handler, healthz, retrieve, grpcServer)
+	serverServer, cleanup7, err := ProvideServer(ctx, busyLatch, v, config, logger, mux)
 	if err != nil {
 		cleanup6()
 		cleanup5()
