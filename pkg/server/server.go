@@ -30,7 +30,6 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
 	"github.com/bobvawter/cacheroach/pkg/server/rest"
 	"github.com/bobvawter/cacheroach/pkg/server/rpc"
-	"github.com/fullstorydev/grpcui/standalone"
 	"github.com/google/wire"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -61,9 +60,23 @@ func ProvideServer(
 	busyLatch common.BusyLatch,
 	certificates []tls.Certificate,
 	cfg *common.Config,
+	debug rest.DebugMux,
 	logger *log.Logger,
-	mux *rest.Mux,
+	public rest.PublicMux,
 ) (*Server, func(), error) {
+	if cfg.DebugAddr != "" {
+		l, err := net.Listen("tcp", cfg.DebugAddr)
+		if err != nil {
+			return nil, nil, err
+		}
+		logger.Infof("debug server listening on %s", l.Addr())
+		go func() {
+			_ = (&http.Server{
+				Handler: debug,
+			}).Serve(l)
+		}()
+	}
+
 	var tlsConfig *tls.Config
 	if len(certificates) > 0 {
 		tlsConfig = &tls.Config{
@@ -85,13 +98,13 @@ func ProvideServer(
 		go func() {
 			_ = (&http.Server{
 				// Enable H2C upgrades over plain-text.
-				Handler: h2c.NewHandler(mux, &http2.Server{}),
+				Handler: h2c.NewHandler(public, &http2.Server{}),
 			}).Serve(l)
 		}()
 	} else {
 		go func() {
 			_ = (&http.Server{
-				Handler:   mux,
+				Handler:   public,
 				TLSConfig: tlsConfig.Clone(),
 			}).ServeTLS(l, "", "")
 		}()
@@ -113,16 +126,6 @@ func ProvideServer(
 
 	if err != nil {
 		return nil, nil, err
-	}
-
-	// Late-bind the debug UI since it requires a loopback connection.
-	if cfg.UI && !cfg.FilesOnly {
-		ui, err := standalone.HandlerViaReflection(ctx, loopback, "cacheroach")
-		if err != nil {
-			return nil, nil, err
-		}
-		mux.Handle("/_/ui/", http.StripPrefix("/_/ui", ui))
-		logger.Info("enabled /_/ui/ handler")
 	}
 
 	cleanup := func() {

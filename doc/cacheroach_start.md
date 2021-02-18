@@ -9,7 +9,6 @@ cacheroach start [flags]
 ### Options
 
 ```
-      --aost duration                  the AS OF SYSTEM TIME for immutable queries (default -5s)
       --bindAddr string                the local IP and port to bind to (default ":0")
       --cacheDir string                persistent cache location
       --cacheDiskSpace int             the size (in megabytes) of the persistent cache (default 1024)
@@ -18,8 +17,7 @@ cacheroach start [flags]
       --chunkConcurrency int           the number of concurrent chunk operations (default 16)
       --chunkSize int                  the desired size for newly-stored chunks (default 524288)
       --connect string                 the database connection string (default "postgres://root@localhost:26257/cacheroach")
-      --enableUI                       enable gRPC UI
-      --filesOnly                      if true, don't serve any RPC or diagnostic endpoints
+      --debugAddr string               bind additional debugging endpoints, if set
       --gracePeriod duration           the grace period for draining connections (default 10s)
   -h, --help                           help for start
       --key string                     a file that contains a private key
