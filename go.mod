@@ -10,8 +10,6 @@ require (
 	github.com/blushft/go-diagrams v0.0.0-20201006005127-c78c821223d9
 	github.com/bobvawter/latch v1.0.0
 	github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
-	github.com/fullstorydev/grpcui v1.1.0
-	github.com/fullstorydev/grpcurl v1.8.0 // indirect
 	github.com/gofrs/uuid v3.3.0+incompatible // indirect
 	github.com/golang/protobuf v1.4.3
 	github.com/google/subcommands v1.2.0 // indirect
@@ -22,11 +20,11 @@ require (
 	github.com/jackc/pgconn v1.8.0
 	github.com/jackc/pgproto3/v2 v2.0.7 // indirect
 	github.com/jackc/pgx/v4 v4.10.1
-	github.com/jhump/protoreflect v1.8.1 // indirect
 	github.com/lib/pq v1.9.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.9.0
 	github.com/shopspring/decimal v1.2.0 // indirect
+	github.com/smartystreets/assertions v1.0.0 // indirect
 	github.com/spf13/cobra v1.1.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.6.1

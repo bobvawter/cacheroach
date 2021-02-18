@@ -14,65 +14,64 @@
 package rest
 
 import (
+	"context"
 	"net/http"
 	"net/http/pprof"
 	"strings"
 
-	"context"
-
-	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/pkg/metrics"
-	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
 	"google.golang.org/grpc"
 )
 
-// Mux has all functionality attached.
-type Mux struct {
+// PublicMux has public functionality attached.
+type PublicMux struct {
 	*http.ServeMux
 }
 
-// ProvideMux is called by wire.
-func ProvideMux(
-	cfg *common.Config,
-	logger *log.Logger,
+// ProvidePublicMux is called by wire.
+func ProvidePublicMux(
 	fileHandler FileHandler,
 	measure metrics.Wrapper,
-	metrics metrics.Handler,
-	healthz Healthz,
 	retrieve Retrieve,
 	rpc *grpc.Server,
-) *Mux {
+) PublicMux {
 	fileHandler = measure(fileHandler, "files")
 	retrieve = measure(retrieve, "files")
 	mux := http.NewServeMux()
 
-	if cfg.FilesOnly {
-		mux.Handle("/_/v0/retrieve/", retrieve)
-		mux.Handle("/_/", http.NotFoundHandler())
-		mux.Handle("/", measure(fileHandler, "fileHandler"))
-		logger.Info("not binding RPC endpoints")
-	} else {
-		mux.HandleFunc("/_/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/_/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/_/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/_/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/_/debug/pprof/trace", pprof.Trace)
-		mux.Handle("/_/healthz", healthz)
-		mux.Handle("/_/metrics", metrics)
-		mux.Handle("/_/v0/retrieve/", measure(retrieve, "retrieve"))
-		mux.Handle("/_/", http.NotFoundHandler())
+	mux.Handle("/_/v0/retrieve/", retrieve)
+	mux.Handle("/_/", http.NotFoundHandler())
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(context.WithValue(r.Context(), diag.RequestKey, r))
+		if r.ProtoMajor == 2 && strings.HasPrefix(
+			r.Header.Get("Content-Type"), "application/grpc") {
+			rpc.ServeHTTP(w, r)
+		} else {
+			fileHandler.ServeHTTP(w, r)
+		}
+	})
 
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			r = r.WithContext(context.WithValue(r.Context(), diag.RequestKey, r))
-			if r.ProtoMajor == 2 && strings.HasPrefix(
-				r.Header.Get("Content-Type"), "application/grpc") {
-				rpc.ServeHTTP(w, r)
-			} else {
-				fileHandler.ServeHTTP(w, r)
-			}
-		})
-	}
+	return PublicMux{mux}
+}
 
-	return &Mux{mux}
+// DebugMux has additional debugging endpoints attached.
+type DebugMux struct {
+	*http.ServeMux
+}
+
+// ProvideDebugMux is called by wire.
+func ProvideDebugMux(
+	metrics metrics.Handler,
+	healthz Healthz,
+) DebugMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.Handle("/healthz", healthz)
+	mux.Handle("/varz", metrics)
+	return DebugMux{mux}
 }

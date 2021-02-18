@@ -23,11 +23,10 @@ import (
 type Config struct {
 	BindAddr           string        // The network address to bind the API to.
 	CertBundle         string        // A path to a certificate bundle file.
-	FilesOnly          bool          // If true, only service "plain" file requests.
+	DebugAddr          string        // If set serve additional debugging endpoints.
 	GenerateSelfSigned bool          // If true, a self-signed certificate will be created.
 	GracePeriod        time.Duration // The time to allow connections to drain.
 	PrivateKey         string        // A path to a private key file.
-	UI                 bool          // Enable a debugging UI
 }
 
 // Bind adds flags to the FlagSet.
@@ -36,13 +35,12 @@ func (c *Config) Bind(flags *pflag.FlagSet) {
 		"the local IP and port to bind to")
 	flags.StringVar(&c.CertBundle, "certs", "",
 		"a file that contains a certificate bundle")
-	flags.BoolVar(&c.FilesOnly, "filesOnly", false,
-		"if true, don't serve any RPC or diagnostic endpoints")
+	flags.StringVar(&c.DebugAddr, "debugAddr", "",
+		"bind additional debugging endpoints, if set")
 	flags.BoolVar(&c.GenerateSelfSigned, "selfSign", false,
 		"generate self-signed certificates")
 	flags.DurationVar(&c.GracePeriod, "gracePeriod", 10*time.Second,
 		"the grace period for draining connections")
 	flags.StringVar(&c.PrivateKey, "key", "",
 		"a file that contains a private key")
-	flags.BoolVar(&c.UI, "enableUI", false, "enable gRPC UI")
 }

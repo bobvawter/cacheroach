@@ -40,13 +40,15 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	if err != nil {
 		return nil, nil, err
 	}
-	cacheCache, cleanup, err := cache.ProvideCache(contextContext, factory, cacheConfig, logger)
+	handler := metrics.ProvideMetricsHandler(logger, registry, registry)
+	pool, err := storeproduction.ProvideDB(contextContext, configConfig, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	pool, err := storeproduction.ProvideDB(contextContext, configConfig, logger)
+	healthz := rest.ProvideHealthz(pool, logger)
+	debugMux := rest.ProvideDebugMux(handler, healthz)
+	cacheCache, cleanup, err := cache.ProvideCache(contextContext, factory, cacheConfig, logger)
 	if err != nil {
-		cleanup()
 		return nil, nil, err
 	}
 	store, cleanup2 := blob.ProvideStore(contextContext, cacheCache, configConfig, pool, logger)
@@ -96,8 +98,6 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 	vHostWrapper := rest.ProvideVHostWrapper(logger, vHostMap)
 	fileHandler := rest.ProvideFileHandler(store, enforcerEnforcer, fsStore, logger, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	wrapper := metrics.ProvideWrapper(factory)
-	handler := metrics.ProvideMetricsHandler(logger, registry, registry)
-	healthz := rest.ProvideHealthz(pool, logger)
 	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, tokenServer)
 	if err != nil {
@@ -145,8 +145,8 @@ func newInjector(contextContext context.Context, cacheConfig *cache.Config, conf
 		cleanup()
 		return nil, nil, err
 	}
-	mux := rest.ProvideMux(commonConfig, logger, fileHandler, wrapper, handler, healthz, retrieve, grpcServer)
-	serverServer, cleanup5, err := server.ProvideServer(contextContext, busyLatch, v, commonConfig, logger, mux)
+	publicMux := rest.ProvidePublicMux(fileHandler, wrapper, retrieve, grpcServer)
+	serverServer, cleanup5, err := server.ProvideServer(contextContext, busyLatch, v, commonConfig, debugMux, logger, publicMux)
 	if err != nil {
 		cleanup4()
 		cleanup3()

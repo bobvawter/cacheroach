@@ -45,22 +45,23 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cacheConfig, cleanup, err := storetesting.ProvideCacheConfig()
-	if err != nil {
-		return nil, nil, err
-	}
-	cacheCache, cleanup2, err := cache.ProvideCache(ctx, factory, cacheConfig, logger)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
+	handler := metrics.ProvideMetricsHandler(logger, registry, registry)
 	configConfig, err := storetesting.ProvideStoreConfig()
 	if err != nil {
-		cleanup2()
+		return nil, nil, err
+	}
+	pool, cleanup, err := storetesting.ProvideDB(ctx, configConfig, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	healthz := rest.ProvideHealthz(pool, logger)
+	debugMux := rest.ProvideDebugMux(handler, healthz)
+	cacheConfig, cleanup2, err := storetesting.ProvideCacheConfig()
+	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	pool, cleanup3, err := storetesting.ProvideDB(ctx, configConfig, logger)
+	cacheCache, cleanup3, err := cache.ProvideCache(ctx, factory, cacheConfig, logger)
 	if err != nil {
 		cleanup2()
 		cleanup()
@@ -121,8 +122,6 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	vHostWrapper := rest.ProvideVHostWrapper(logger, vHostMap)
 	fileHandler := rest.ProvideFileHandler(store, enforcerEnforcer, fsStore, logger, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	wrapper := metrics.ProvideWrapper(factory)
-	handler := metrics.ProvideMetricsHandler(logger, registry, registry)
-	healthz := rest.ProvideHealthz(pool, logger)
 	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, server)
 	if err != nil {
@@ -176,8 +175,8 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	mux := rest.ProvideMux(config, logger, fileHandler, wrapper, handler, healthz, retrieve, grpcServer)
-	serverServer, cleanup7, err := ProvideServer(ctx, busyLatch, v, config, logger, mux)
+	publicMux := rest.ProvidePublicMux(fileHandler, wrapper, retrieve, grpcServer)
+	serverServer, cleanup7, err := ProvideServer(ctx, busyLatch, v, config, debugMux, logger, publicMux)
 	if err != nil {
 		cleanup6()
 		cleanup5()
