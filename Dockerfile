@@ -1,4 +1,4 @@
-FROM golang:1.15 AS builder
+FROM golang:1.16 AS builder
 # We'll add protoc to the builder as a cacheable stage, since it
 # won't change all that often.
 ARG PROTOVER=3.14.0
