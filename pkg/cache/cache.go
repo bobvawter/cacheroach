@@ -23,7 +23,6 @@ import (
 	"encoding"
 	"encoding/hex"
 	"io"
-	"io/ioutil"
 	mathrand "math/rand"
 	"os"
 	"path/filepath"
@@ -397,7 +396,7 @@ func (c *Cache) load(key string) ([]byte, error) {
 		R: f,
 	}
 
-	return ioutil.ReadAll(r)
+	return io.ReadAll(r)
 }
 
 func (c *Cache) store(key string, data []byte) error {

@@ -15,7 +15,6 @@ package cache
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -29,7 +28,7 @@ func TestCache(t *testing.T) {
 	ctx := context.Background()
 	logger := log.New(os.Stdout).WithDebug().WithoutColor()
 
-	d, err := ioutil.TempDir("", "cacheroach-*")
+	d, err := os.MkdirTemp("", "cacheroach-*")
 	if !a.NoError(err) {
 		return
 	}

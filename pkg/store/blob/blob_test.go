@@ -22,7 +22,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	"github.com/bobvawter/cacheroach/api/tenant"
 	"github.com/stretchr/testify/assert"
@@ -163,7 +162,7 @@ func TestRope(t *testing.T) {
 			return
 		}
 
-		if data, err := ioutil.ReadAll(f); a.NoError(err) {
+		if data, err := io.ReadAll(f); a.NoError(err) {
 			a.Equal(data, data)
 		}
 	})

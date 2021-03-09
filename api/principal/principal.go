@@ -16,7 +16,7 @@ package principal
 import (
 	"database/sql/driver"
 	"encoding/base64"
-	"io/ioutil"
+	"io"
 	"strings"
 
 	"github.com/google/uuid"
@@ -39,7 +39,7 @@ func NewID() *ID {
 func ParseID(x string) (*ID, error) {
 	switch len(x) {
 	case 24:
-		b, err := ioutil.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(x)))
+		b, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(x)))
 		return &ID{Data: b}, errors.Wrap(err, "value is not valid base64")
 	case 36:
 		u, err := uuid.Parse(x)
