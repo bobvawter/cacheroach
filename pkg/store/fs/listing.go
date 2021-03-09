@@ -14,39 +14,31 @@
 package fs
 
 import (
-	"os"
+	"io/fs"
 	"time"
 )
 
-// listing implements enough of os.FileInfo to be able to use the
-// http package's directory viewer useful.
+// listing is a trivial implementation of fs.DirEntry and fs.FileInfo.
 type listing struct {
 	dir  bool
 	name string
 }
 
-var _ os.FileInfo = &listing{}
+var (
+	_ fs.DirEntry = (*listing)(nil)
+	_ fs.FileInfo = (*listing)(nil)
+)
 
-func (l *listing) Name() string {
-	return l.name
+func (l *listing) Info() (fs.FileInfo, error) { return l, nil }
+func (l *listing) IsDir() bool                { return l.dir }
+func (l *listing) Mode() fs.FileMode {
+	if l.dir {
+		return fs.ModeDir | 0555
+	}
+	return 0444
 }
-
-func (l *listing) Size() int64 {
-	return 0
-}
-
-func (l *listing) Mode() os.FileMode {
-	return 0666
-}
-
-func (l *listing) ModTime() time.Time {
-	return time.Time{}
-}
-
-func (l *listing) IsDir() bool {
-	return l.dir
-}
-
-func (l *listing) Sys() interface{} {
-	return nil
-}
+func (l *listing) ModTime() time.Time { return time.Time{} }
+func (l *listing) Name() string       { return l.name }
+func (l *listing) Size() int64        { return 0 }
+func (l *listing) Sys() interface{}   { return nil }
+func (l *listing) Type() fs.FileMode  { return l.Mode().Type() }

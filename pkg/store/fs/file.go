@@ -15,15 +15,15 @@ package fs
 
 import (
 	"fmt"
-	"net/http"
-	"os"
+	"io"
+	"io/fs"
 	"time"
 
 	"github.com/bobvawter/cacheroach/api/tenant"
 	"github.com/bobvawter/cacheroach/pkg/store/blob"
 )
 
-// FileMeta describes file-like data.
+// FileMeta describes file-like data other than the file's size.
 type FileMeta struct {
 	CTime, MTime time.Time
 	Meta         map[string]string
@@ -39,19 +39,38 @@ type File struct {
 }
 
 var (
-	_ http.File   = &File{}
-	_ os.FileInfo = &File{}
+	_ fs.File           = (*File)(nil)
+	_ fs.FileInfo       = (*File)(nil)
+	_ io.ReadSeekCloser = (*File)(nil)
 )
 
-// Name implements http.File and returns the file's path.
+// IsDir implements fs.FileInfo.
+func (f *File) IsDir() bool {
+	return false
+}
+
+// Name implements fs.FileInfo and returns the file's path.
 func (f *File) Name() string { return f.Path }
 
-// ModTime implements http.File.
+// Mode implements fs.FileInfo.
+func (f *File) Mode() fs.FileMode {
+	return 0444
+}
+
+// ModTime implements fs.FileInfo.
 func (f *File) ModTime() time.Time { return f.MTime }
 
-// Stat implements os.FileInfo.
-func (f *File) Stat() (os.FileInfo, error) { return f, nil }
+// Size implements fs.FileInfo.
+func (f *File) Size() int64 {
+	return f.Blob.Length()
+}
+
+// Stat implements fs.FileInfo.
+func (f *File) Stat() (fs.FileInfo, error) { return f, nil }
 
 func (f *File) String() string {
 	return fmt.Sprintf("%s:%s -> %s", f.Tenant, f.Path, f.Hash())
 }
+
+// Sys implements fs.FileInfo.
+func (f *File) Sys() interface{} { return nil }
