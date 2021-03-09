@@ -16,7 +16,7 @@ package cli
 import (
 	"context"
 	"encoding/base64"
-	"io/ioutil"
+	"io"
 	"strings"
 	"time"
 
@@ -64,7 +64,7 @@ func (b *bootstrap) execute(ctx context.Context, args []string) error {
 		return errors.New("supertoken is required")
 	}
 
-	hmacData, err := ioutil.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(b.hmacKey)))
+	hmacData, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(b.hmacKey)))
 	if err != nil {
 		return err
 	}

@@ -20,8 +20,6 @@ import (
 	"os"
 	"time"
 
-	"io/ioutil"
-
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/pkg/cache"
 	"github.com/bobvawter/cacheroach/pkg/metrics"
@@ -47,7 +45,7 @@ var (
 
 // ProvideCacheConfig returns a configuration with sane defaults.
 func ProvideCacheConfig() (*cache.Config, func(), error) {
-	d, err := ioutil.TempDir("", "cacheroach-*")
+	d, err := os.MkdirTemp("", "cacheroach-*")
 	if err != nil {
 		return nil, nil, err
 	}

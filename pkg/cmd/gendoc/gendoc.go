@@ -15,7 +15,6 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,7 +152,7 @@ func render(
 	name, filename string,
 	fn func(ctx context.Context, d *diagram.Diagram) error,
 ) error {
-	tmp, err := ioutil.TempDir("", "gendoc")
+	tmp, err := os.MkdirTemp("", "gendoc")
 	if err != nil {
 		return err
 	}

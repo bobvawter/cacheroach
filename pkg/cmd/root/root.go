@@ -18,8 +18,6 @@ import (
 	"context"
 	"os"
 
-	"io/ioutil"
-
 	"strings"
 
 	"github.com/Mandala/go-log"
@@ -48,7 +46,7 @@ func Execute(ctx context.Context) error {
 		s := os.ExpandEnv(os.Args[i])
 
 		if len(s) > 0 && s[0] == '@' {
-			data, err := ioutil.ReadFile(s[1:])
+			data, err := os.ReadFile(s[1:])
 			if err != nil {
 				logger.Errorf("args[%d]: %v", i, err)
 				return err

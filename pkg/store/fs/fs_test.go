@@ -17,8 +17,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	gofs "io/fs"
-	"io/ioutil"
 	"math/rand"
 	"testing"
 	"time"
@@ -101,7 +101,7 @@ func TestFileFlow(t *testing.T) {
 		}
 		a.Equal(int64(2), f.Version)
 
-		if data, err := ioutil.ReadAll(f); a.NoError(err) {
+		if data, err := io.ReadAll(f); a.NoError(err) {
 			a.Equal(data, data)
 		}
 		a.Equal(int64(len(data)), f.Length())

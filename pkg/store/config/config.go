@@ -16,13 +16,11 @@
 package config
 
 import (
-	"time"
-
 	"context"
 	"encoding/base64"
-	"io/ioutil"
-
+	"io"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
@@ -81,7 +79,7 @@ func (c *Config) Configure(_ context.Context) error {
 			return errors.New("empty --signingKey flag")
 		}
 		r := base64.NewDecoder(base64.StdEncoding, strings.NewReader(elt))
-		data, err := ioutil.ReadAll(r)
+		data, err := io.ReadAll(r)
 		if err != nil {
 			return err
 		}

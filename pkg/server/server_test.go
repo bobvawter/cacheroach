@@ -18,7 +18,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -167,7 +166,7 @@ func TestSmoke(t *testing.T) {
 		}
 		a.Equal(http.StatusOK, resp.StatusCode)
 
-		data, err := ioutil.ReadAll(resp.Body)
+		data, err := io.ReadAll(resp.Body)
 		a.NoError(err)
 		a.Equal("Hello World!", string(data))
 	})
@@ -364,7 +363,7 @@ func TestSmoke(t *testing.T) {
 		}
 		a.Equal(200, resp.StatusCode)
 
-		data, err := ioutil.ReadAll(resp.Body)
+		data, err := io.ReadAll(resp.Body)
 		if !a.NoError(err) {
 			return
 		}
@@ -394,7 +393,7 @@ func TestSmoke(t *testing.T) {
 			}
 			a.Equal(200, resp.StatusCode)
 
-			data, err := ioutil.ReadAll(resp.Body)
+			data, err := io.ReadAll(resp.Body)
 			if !a.NoError(err) {
 				return
 			}
