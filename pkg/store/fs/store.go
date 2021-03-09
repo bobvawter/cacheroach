@@ -14,9 +14,8 @@
 package fs
 
 import (
-	"time"
-
 	"context"
+	"time"
 
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/api/file"

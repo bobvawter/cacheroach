@@ -16,13 +16,12 @@ package fs
 import (
 	"context"
 	"errors"
-	"net/http"
-	"os"
+	"io/fs"
 	"strings"
 	"time"
 )
 
-// dir implements enough of the http.File and os.FileInfo interfaces
+// dir implements fs.File, fs.FileInfo, and fs.ReadDirFile interfaces
 // to create a directory listing.
 type dir struct {
 	path string // The path, including a trailing /
@@ -30,22 +29,23 @@ type dir struct {
 }
 
 var (
-	_ http.File   = &dir{}
-	_ os.FileInfo = &dir{}
+	_ fs.File        = (*dir)(nil)
+	_ fs.FileInfo    = (*dir)(nil)
+	_ fs.ReadDirFile = (*dir)(nil)
 )
 
 func (d *dir) Close() error                   { return nil }
 func (d *dir) IsDir() bool                    { return true }
 func (d *dir) Name() string                   { return d.path }
-func (d *dir) Mode() os.FileMode              { return 0777 }
+func (d *dir) Mode() fs.FileMode              { return fs.ModeDir | 0555 }
 func (d *dir) ModTime() time.Time             { return time.Time{} }
-func (d *dir) Seek(int64, int) (int64, error) { return 0, os.ErrInvalid }
-func (d *dir) Read([]byte) (int, error)       { return 0, os.ErrInvalid }
+func (d *dir) Seek(int64, int) (int64, error) { return 0, fs.ErrInvalid }
+func (d *dir) Read([]byte) (int, error)       { return 0, fs.ErrInvalid }
 func (d *dir) Size() int64                    { return 0 }
-func (d *dir) Stat() (os.FileInfo, error)     { return d, nil }
+func (d *dir) Stat() (fs.FileInfo, error)     { return d, nil }
 func (d *dir) Sys() interface{}               { return nil }
 
-func (d *dir) Readdir(count int) ([]os.FileInfo, error) {
+func (d *dir) ReadDir(count int) ([]fs.DirEntry, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -64,7 +64,7 @@ func (d *dir) Readdir(count int) ([]os.FileInfo, error) {
 	}
 	defer rows.Close()
 
-	var ret []os.FileInfo
+	var ret []fs.DirEntry
 	for rows.Next() {
 		var nextSegment string
 		var isDir bool

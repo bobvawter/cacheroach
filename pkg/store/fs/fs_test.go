@@ -17,9 +17,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	gofs "io/fs"
 	"io/ioutil"
 	"math/rand"
-	"os"
 	"testing"
 	"time"
 
@@ -65,7 +65,7 @@ func TestFileFlow(t *testing.T) {
 	t.Run("loadMissingFile", func(t *testing.T) {
 		a := assert.New(t)
 		_, err := fs.Open(path)
-		a.Truef(errors.Is(err, os.ErrNotExist), "%v", err)
+		a.Truef(errors.Is(err, gofs.ErrNotExist), "%v", err)
 	})
 
 	t.Run("ensureFile", func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestFileFlow(t *testing.T) {
 
 	t.Run("get", func(t *testing.T) {
 		a := assert.New(t)
-		f, err := fs.Get(ctx, path, -1)
+		f, err := fs.OpenVersion(ctx, path, -1)
 		if !a.NoError(err) {
 			return
 		}
@@ -104,7 +104,7 @@ func TestFileFlow(t *testing.T) {
 		if data, err := ioutil.ReadAll(f); a.NoError(err) {
 			a.Equal(data, data)
 		}
-		a.Equal(int64(len(data)), f.Size())
+		a.Equal(int64(len(data)), f.Length())
 		a.NoError(f.Close())
 	})
 
@@ -121,7 +121,7 @@ func TestFileFlow(t *testing.T) {
 		}
 		a.True(stat.IsDir())
 
-		files, err := f.Readdir(-1)
+		files, err := f.(gofs.ReadDirFile).ReadDir(-1)
 		if !a.NoError(err) {
 			return
 		}
@@ -142,7 +142,7 @@ func TestFileFlow(t *testing.T) {
 		a.True(stat.IsDir())
 		a.Equal("/some/", stat.Name())
 
-		files, err = f.Readdir(-1)
+		files, err = f.(gofs.ReadDirFile).ReadDir(-1)
 		if !a.NoError(err) {
 			return
 		}
@@ -158,7 +158,7 @@ func TestFileFlow(t *testing.T) {
 		a.NoError(fs.Delete(ctx, path))
 
 		_, err := fs.Open(path)
-		a.Truef(errors.Is(err, os.ErrNotExist), "%v", err)
+		a.Truef(errors.Is(err, gofs.ErrNotExist), "%v", err)
 	})
 
 	t.Run("delete tenant and purge", func(t *testing.T) {

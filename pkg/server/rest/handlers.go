@@ -103,7 +103,7 @@ func ProvideFileHandler(
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			http.FileServer(f).ServeHTTP(w, req)
+			http.FileServer(http.FS(f)).ServeHTTP(w, req)
 
 		case http.MethodPost, http.MethodPut:
 			if ok, err := check(&capabilities.Capabilities{Write: true}); err != nil {
@@ -194,7 +194,7 @@ func ProvideRetrieve(
 			return
 		}
 
-		f, err := fs.FileSystem(loc.TenantId).Get(ctx, loc.Path, loc.Version)
+		f, err := fs.FileSystem(loc.TenantId).OpenVersion(ctx, loc.Path, loc.Version)
 		if errors.Is(err, os.ErrNotExist) {
 			w.WriteHeader(http.StatusNotFound)
 			return

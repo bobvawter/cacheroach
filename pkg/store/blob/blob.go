@@ -17,16 +17,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
 	"io"
 	"math"
-	"net/http"
-	"os"
 	"sort"
 	"sync"
-	"time"
-
-	"encoding/gob"
 
 	"github.com/bobvawter/cacheroach/api/tenant"
 	"github.com/bobvawter/cacheroach/pkg/cache"
@@ -115,8 +111,7 @@ func (m *ropeMeta) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-// A Blob provides access to the contents of an immutable blob. This
-// type implements the http.File interface for ease of integration.
+// A Blob provides access to the contents of an immutable blob.
 type Blob struct {
 	*ropeMeta
 	cache  *cache.Cache
@@ -133,9 +128,8 @@ type Blob struct {
 }
 
 var (
-	_ http.File   = &Blob{}
-	_ io.WriterTo = &Blob{}
-	_ os.FileInfo = &Blob{}
+	_ io.ReadSeekCloser = (*Blob)(nil)
+	_ io.WriterTo       = (*Blob)(nil)
 )
 
 // Close implements io.Closer.
@@ -147,16 +141,18 @@ func (b *Blob) Close() error {
 	return nil
 }
 
+// Hash returns the content hash of the Blob.
+func (b *Blob) Hash() Hash { return b.hash }
+
+// Length returns the content length.
+func (b *Blob) Length() int64 { return b.length }
+
 // Read implements io.Reader.
 func (b *Blob) Read(buf []byte) (int, error) {
 	w := bytes.NewBuffer(buf[:0])
 	count, err := b.WriteN(w, int64(len(buf)))
 	return int(count), err
 }
-
-// Readdir implements http.File. It returns nothing since a blob is not
-// a directory.
-func (b *Blob) Readdir(int) ([]os.FileInfo, error) { return nil, nil }
 
 // Seek implements io.Seeker.
 func (b *Blob) Seek(offset int64, whence int) (int64, error) {
@@ -177,31 +173,7 @@ func (b *Blob) Seek(offset int64, whence int) (int64, error) {
 	return b.mu.pos, nil
 }
 
-// Hash returns the content hash of the Blob.
-func (b *Blob) Hash() Hash { return b.hash }
-
-// Stat implements http.File.
-func (b *Blob) Stat() (os.FileInfo, error) { return b, nil }
-
-// IsDir implements os.FileInfo and returns false.
-func (b *Blob) IsDir() bool { return false }
-
-// Mode implements os.FileInfo and returns 0666.
-func (b *Blob) Mode() os.FileMode { return 0666 }
-
-// ModTime implements os.FileInfo and returns zero.
-func (b *Blob) ModTime() time.Time { return time.Time{}.UTC() }
-
-// Name implements os.FileInfo.Name and returns the content hash.
-func (b *Blob) Name() string { return b.hash.String() }
-
-// Size implements os.FileInfo.Size.
-func (b *Blob) Size() int64 { return b.length }
-
 func (b *Blob) String() string { return b.hash.String() }
-
-// Sys implements os.FileInfo and returns nil.
-func (b *Blob) Sys() interface{} { return nil }
 
 // WriteN writes up to count bytes from the current position into w.
 func (b *Blob) WriteN(w io.Writer, count int64) (int64, error) {

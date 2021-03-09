@@ -15,8 +15,7 @@ package fs
 
 import (
 	"context"
-	"net/http"
-	"os"
+	"io/fs"
 	"path"
 	"time"
 
@@ -33,7 +32,11 @@ type FileSystem struct {
 	tenant *tenant.ID
 }
 
-var _ http.FileSystem = &FileSystem{}
+var (
+	_ fs.FS        = (*FileSystem)(nil)
+	_ fs.ReadDirFS = (*FileSystem)(nil)
+	_ fs.StatFS    = (*FileSystem)(nil)
+)
 
 // Delete ensures that no file exists with the given name.
 func (f *FileSystem) Delete(ctx context.Context, name string) error {
@@ -45,10 +48,48 @@ func (f *FileSystem) Delete(ctx context.Context, name string) error {
 	})
 }
 
-// Get returns an open handle to the named file. If version <= 0, the
-// latest version of the file will be returned.
-func (f *FileSystem) Get(ctx context.Context, name string, version int64) (*File, error) {
+// Open implements fs.FS and simply wraps OpenVersion. If there is
+// no file with that path, Open will look instead to see if there are
+// any files with that path prefix.  If so, it will return a File that
+// represents a directory listing.
+func (f *FileSystem) Open(name string) (fs.File, error) {
+	ctx := context.Background()
 	name = path.Clean(name)
+
+	if name == "/" {
+		return &dir{path: "/", fs: f}, nil
+	}
+	ret, err := f.OpenVersion(ctx, name, -1)
+	if errors.Is(err, fs.ErrNotExist) {
+		rows, err := f.store.db.Query(ctx,
+			"SELECT path "+
+				"FROM files "+
+				"WHERE tenant = $1 "+
+				"AND path LIKE $2 "+
+				"AND dtime IS NULL "+
+				"LIMIT 1",
+			f.tenant, name+"/%")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		if rows.Next() {
+			return &dir{
+				path: name + "/",
+				fs:   f,
+			}, nil
+		}
+	}
+	return ret, err
+}
+
+// OpenVersion returns an open handle to the named file. If version <=
+// 0, the latest version of the file will be returned.
+func (f *FileSystem) OpenVersion(ctx context.Context, name string, version int64) (*File, error) {
+	name = path.Clean(name)
+	if name[0] != '/' {
+		name = "/" + name
+	}
 
 	var hash blob.Hash
 	m := &FileMeta{
@@ -88,14 +129,14 @@ func (f *FileSystem) Get(ctx context.Context, name string, version int64) (*File
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, os.ErrNotExist
+		return nil, fs.ErrNotExist
 	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "%s:%s", f.tenant, name)
 	}
 
 	b, err := f.store.blobs.OpenBlob(ctx, f.tenant, hash)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) {
 		// Empty file, this is OK.
 	} else if err != nil {
 		return nil, errors.Wrapf(err, "%s:%s", f.tenant, name)
@@ -105,41 +146,6 @@ func (f *FileSystem) Get(ctx context.Context, name string, version int64) (*File
 		FileMeta: m,
 		Blob:     b,
 	}, nil
-}
-
-// Open implements http.Filesystem and simply wraps Get. If there is
-// no file with that path, Open will look instead to see if there are
-// any files with that path prefix.  If so, it will return a File that
-// represents a directory listing.
-func (f *FileSystem) Open(name string) (http.File, error) {
-	ctx := context.Background()
-	name = path.Clean(name)
-
-	if name == "/" {
-		return &dir{path: "/", fs: f}, nil
-	}
-	ret, err := f.Get(ctx, name, -1)
-	if errors.Is(err, os.ErrNotExist) {
-		rows, err := f.store.db.Query(ctx,
-			"SELECT path "+
-				"FROM files "+
-				"WHERE tenant = $1 "+
-				"AND path LIKE $2 "+
-				"AND dtime IS NULL "+
-				"LIMIT 1",
-			f.tenant, name+"/%")
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		if rows.Next() {
-			return &dir{
-				path: name + "/",
-				fs:   f,
-			}, nil
-		}
-	}
-	return ret, err
 }
 
 // Put creates or updates a file that is associated with the given
@@ -199,6 +205,20 @@ func (f *FileSystem) Put(ctx context.Context, meta *FileMeta, hash blob.Hash) er
 		return nil
 	})
 	return errors.Wrapf(err, "%s:%s@%d", f.tenant, meta.Path, meta.Version)
+}
+
+// ReadDir implements fs.ReadDirFS.
+func (f *FileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
+	return (&dir{
+		fs:   f,
+		path: path.Clean(name) + "/",
+	}).ReadDir(0)
+}
+
+// Stat implements fs.StatFS.
+func (f *FileSystem) Stat(name string) (fs.FileInfo, error) {
+	ret, err := f.Open(name)
+	return ret.(fs.FileInfo), err
 }
 
 // Tenant returns the tenant associated with the FileSystem.

@@ -133,12 +133,12 @@ func TestUploadFlow(t *testing.T) {
 	}
 
 	{
-		f, err := rig.fs.FileSystem(tID).Get(ctx, "/index.html", 0)
+		f, err := rig.fs.FileSystem(tID).OpenVersion(ctx, "/index.html", 0)
 		if !a.NoError(err) {
 			return
 		}
 		a.Equal("bar", f.Meta["foo"])
-		a.Equal(int64(chunkLen*chunkCount), f.Size())
+		a.Equal(int64(chunkLen*chunkCount), f.Length())
 		a.Equal(int64(1), f.Version)
 	}
 
@@ -153,12 +153,12 @@ func TestUploadFlow(t *testing.T) {
 	}
 
 	{
-		f, err := rig.fs.FileSystem(tID).Get(ctx, "/index.html", 0)
+		f, err := rig.fs.FileSystem(tID).OpenVersion(ctx, "/index.html", 0)
 		if !a.NoError(err) {
 			return
 		}
 		a.Equal("bar2", f.Meta["foo"])
-		a.Equal(int64(chunkLen*chunkCount), f.Size())
+		a.Equal(int64(chunkLen*chunkCount), f.Length())
 		a.Equal(int64(2), f.Version)
 	}
 
@@ -186,23 +186,23 @@ func TestUploadFlow(t *testing.T) {
 	}
 
 	{
-		f, err := rig.fs.FileSystem(tID).Get(ctx, "/index.html", 0)
+		f, err := rig.fs.FileSystem(tID).OpenVersion(ctx, "/index.html", 0)
 		if !a.NoError(err) {
 			return
 		}
 		a.Equal("bar3", f.Meta["foo"])
-		a.Equal(int64(chunkLen*(chunkCount+1)), f.Size())
+		a.Equal(int64(chunkLen*(chunkCount+1)), f.Length())
 		a.Equal(int64(3), f.Version)
 	}
 
 	// Test retriving old version.
 	{
-		f, err := rig.fs.FileSystem(tID).Get(ctx, "/index.html", 1)
+		f, err := rig.fs.FileSystem(tID).OpenVersion(ctx, "/index.html", 1)
 		if !a.NoError(err) {
 			return
 		}
 		a.Equal("bar", f.Meta["foo"])
-		a.Equal(int64(chunkLen*chunkCount), f.Size())
+		a.Equal(int64(chunkLen*chunkCount), f.Length())
 		a.Equal(int64(1), f.Version)
 	}
 
