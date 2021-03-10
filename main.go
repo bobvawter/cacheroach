@@ -24,17 +24,8 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT)
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-ch:
-			cancel()
-		}
-	}()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 
 	err := root.Execute(ctx)
 	if err != nil {
