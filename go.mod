@@ -9,6 +9,7 @@ require (
 	github.com/allegro/bigcache/v3 v3.0.0
 	github.com/blushft/go-diagrams v0.0.0-20201006005127-c78c821223d9
 	github.com/bobvawter/latch v1.0.0
+	github.com/coreos/go-oidc/v3 v3.0.0
 	github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
 	github.com/gofrs/uuid v3.3.0+incompatible // indirect
 	github.com/golang/protobuf v1.4.3
@@ -29,7 +30,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.6.1
 	github.com/withmandala/go-log v0.1.0 // indirect
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
+	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5
 	golang.org/x/mod v0.4.1 // indirect
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777

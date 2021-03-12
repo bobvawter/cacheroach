@@ -1,13 +1,9 @@
 ## cacheroach auth login
 
-log into a cacheroach server
-
-### Synopsis
-
-if a password is not specified, it will be securely prompted for
+Log in via OIDC authentication
 
 ```
-cacheroach auth login https://username[:password]@cacheroach.server/ [flags]
+cacheroach auth login https://cacheroach.server [flags]
 ```
 
 ### Options

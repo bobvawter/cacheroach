@@ -112,11 +112,11 @@ func (c *CLI) session() *cobra.Command {
 			}
 
 			if out != "" {
-				cfg := c.config.clone()
+				cfg := c.Config.Clone()
 				cfg.DefaultTenant = data.Issued.GetScope().GetOnLocation().GetTenantId()
 				cfg.Session = data.Issued
 				cfg.Token = data.Token.Jwt
-				if err := cfg.writeToFile(out); err != nil {
+				if err := cfg.WriteToFile(out); err != nil {
 					return err
 				}
 			}

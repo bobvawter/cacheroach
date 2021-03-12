@@ -23,6 +23,7 @@ import (
 	"github.com/bobvawter/cacheroach/api/session"
 	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/bobvawter/cacheroach/pkg/enforcer"
+	"github.com/bobvawter/cacheroach/pkg/server/oidc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -42,15 +43,17 @@ var defaultRule = &capabilities.Rule{Kind: &capabilities.Rule_AuthStatus_{
 // Unauthorized requests will be rejected unless the service
 // implementation implements DefaultSession.
 type AuthInterceptor struct {
-	Enforcer *enforcer.Enforcer
-	Logger   *log.Logger
-	Tokens   token.TokensServer
+	Connector *oidc.Connector
+	Enforcer  *enforcer.Enforcer
+	Logger    *log.Logger
+	Tokens    token.TokensServer
 
 	methodRules map[string]*capabilities.Rule
 }
 
 // ProvideAuthInterceptor is called by wire.
 func ProvideAuthInterceptor(
+	connector *oidc.Connector,
 	logger *log.Logger,
 	tokens token.TokensServer,
 ) (*AuthInterceptor, error) {
@@ -76,6 +79,7 @@ func ProvideAuthInterceptor(
 		&capabilities.Rule{Kind: &capabilities.Rule_AuthStatus_{AuthStatus: capabilities.Rule_PUBLIC}}
 
 	return &AuthInterceptor{
+		Connector:   connector,
 		Logger:      logger,
 		Tokens:      tokens,
 		methodRules: reqs,
@@ -144,5 +148,14 @@ func (i *AuthInterceptor) get(ctx context.Context) (*session.Session, error) {
 	if strings.ToLower(data[0][:7]) != "bearer " {
 		return nil, nil
 	}
-	return i.Tokens.Validate(ctx, &token.Token{Jwt: data[0][7:]})
+	sn, err := i.Tokens.Validate(ctx, &token.Token{Jwt: data[0][7:]})
+	if err != nil {
+		return nil, err
+	}
+	if sn != nil {
+		if err := i.Connector.Validate(ctx, sn.PrincipalId); err != nil {
+			return nil, err
+		}
+	}
+	return sn, err
 }

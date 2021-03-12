@@ -15,7 +15,7 @@ package principal
 
 import (
 	"context"
-	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Mandala/go-log"
@@ -25,9 +25,10 @@ import (
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/pkg/errors"
-	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Set is used by wire.
@@ -72,14 +73,7 @@ func (s *Server) Ensure(
 	if p.ID == nil {
 		p.ID = principal.NewID()
 	}
-	if p.PasswordSet != "" {
-		if err := p.SetPassword(p.PasswordSet); err != nil {
-			return nil, err
-		}
-	}
-	if p.Version == 0 && p.PasswordHash == "" {
-		p.PasswordHash = " " // Not valid bcrypt.
-	}
+
 	err := util.Retry(ctx, func(ctx context.Context) error {
 		tx, err := s.DB.Begin(ctx)
 		if err != nil {
@@ -88,40 +82,32 @@ func (s *Server) Ensure(
 		defer tx.Rollback(ctx)
 
 		row := tx.QueryRow(ctx,
-			"INSERT INTO principals (principal, label, pw_hash, version) "+
-				"VALUES ($1, $2, $3, 1) "+
+			"INSERT INTO principals ( "+
+				"principal, email_domain, refresh_after, refresh_status, refresh_token, "+
+				"claims, version"+
+				") VALUES ($1, $2, $3, $4, $5, $6, 1) "+
 				"ON CONFLICT (principal) "+
-				"DO UPDATE SET (label, pw_hash, version) = "+
+				"DO UPDATE SET (refresh_after, refresh_status, refresh_token, claims, version) = "+
 				"("+
-				" IF (length(excluded.label)> 0, excluded.label, principals.label),"+
-				" IF (length(excluded.pw_hash)> 0, excluded.pw_hash, principals.pw_hash),"+
+				" IF (excluded.refresh_after > 0::TIMESTAMPTZ, excluded.refresh_after, principals.refresh_after),"+
+				" IF (excluded.refresh_status > 0, excluded.refresh_status, principals.refresh_status),"+
+				" IF (length(excluded.refresh_token) > 0, excluded.refresh_token, principals.refresh_token),"+
+				" IFNULL (excluded.claims, principals.claims),"+
 				" principals.version + 1"+
-				") RETURNING label, pw_hash, version", p.ID, p.Label, p.PasswordHash)
+				") RETURNING name, refresh_after, refresh_status, refresh_token, claims, version",
+			p.ID, strings.ToLower(p.EmailDomain), p.RefreshAfter.AsTime(),
+			p.RefreshStatus, p.RefreshToken, p.Claims)
 
 		var pendingVersion int64
-		if err := row.Scan(&p.Label, &p.PasswordHash, &pendingVersion); err != nil {
+		var refreshAfter time.Time
+		if err := row.Scan(
+			&p.Label, &refreshAfter, &p.RefreshStatus, &p.RefreshToken,
+			&p.Claims, &pendingVersion); err != nil {
 			return err
 		}
+		p.RefreshAfter = timestamppb.New(refreshAfter)
 		if pendingVersion != p.Version+1 {
 			return util.ErrVersionSkew
-		}
-
-		if _, err := tx.Exec(ctx,
-			"DELETE FROM principal_handles WHERE principal = $1", p.ID); err != nil {
-			return err
-		}
-
-		for i := range p.Handles {
-			// Normalize the handles before inserting
-			h, err := url.Parse(p.Handles[i])
-			if err != nil {
-				return errors.Wrapf(err, "could not parse handle %q", p.Handles[i])
-			}
-			if _, err := tx.Exec(ctx,
-				"INSERT INTO principal_handles (urn, principal) VALUES ($1, $2)",
-				h.String(), p.ID); err != nil {
-				return err
-			}
 		}
 
 		if err := tx.Commit(ctx); err != nil {
@@ -143,10 +129,8 @@ func (s *Server) List(_ *emptypb.Empty, out principal.Principals_ListServer) err
 		defer tx.Rollback(ctx)
 
 		rows, err := tx.Query(ctx,
-			"WITH "+
-				"h AS (SELECT principal, array_agg(urn) AS urns FROM principal_handles GROUP BY principal), "+
-				"p AS (SELECT principal, label, version FROM principals) "+
-				"SELECT p.*, h.urns FROM p JOIN h ON p.principal = h.principal")
+			"SELECT principal, email_domain, name, claims, version "+
+				"FROM principals")
 		if err != nil {
 			return err
 		}
@@ -156,7 +140,7 @@ func (s *Server) List(_ *emptypb.Empty, out principal.Principals_ListServer) err
 		for rows.Next() {
 			p := &principal.Principal{ID: &principal.ID{}}
 
-			if err := rows.Scan(p.ID, &p.Label, &p.Version, &p.Handles); err != nil {
+			if err := rows.Scan(p.ID, &p.EmailDomain, &p.Label, &p.Claims, &p.Version); err != nil {
 				return err
 			}
 
@@ -169,42 +153,37 @@ func (s *Server) List(_ *emptypb.Empty, out principal.Principals_ListServer) err
 }
 
 // Load implements principal.PrincipalsServer.
-func (s *Server) Load(ctx context.Context, id *principal.ID) (*principal.Principal, error) {
-	ret := &principal.Principal{ID: id}
-	err := util.Retry(ctx, func(ctx context.Context) error {
-		var eg errgroup.Group
-		eg.Go(func() error {
-			row := s.DB.QueryRow(ctx,
-				"SELECT label, pw_hash, version FROM principals WHERE principal = $1", id)
-			return row.Scan(&ret.Label, &ret.PasswordHash, &ret.Version)
-		})
-		eg.Go(func() error {
-			rows, err := s.DB.Query(ctx,
-				"SELECT urn FROM principal_handles WHERE principal = $1", id)
-			if err != nil {
-				return err
-			}
-			defer rows.Close()
+func (s *Server) Load(ctx context.Context, req *principal.LoadRequest) (*principal.Principal, error) {
+	var col string
+	var val interface{}
 
-			var handles []string
-			for rows.Next() {
-				s := ""
-				if err := rows.Scan(&s); err != nil {
-					return err
-				}
-				u, err := url.Parse(s)
-				if err != nil {
-					return err
-				}
-				handles = append(handles, u.String())
-			}
-			ret.Handles = handles
-			return nil
-		})
-		return eg.Wait()
+	switch t := req.Kind.(type) {
+	case *principal.LoadRequest_Email:
+		col = "email"
+		val = strings.ToLower(t.Email)
+	case *principal.LoadRequest_ID:
+		col = "principal"
+		val = t.ID
+	case *principal.LoadRequest_EmailDomain:
+		col = "email_domain"
+		val = strings.ToLower(t.EmailDomain)
+	default:
+		return nil, status.Error(codes.Unimplemented, "unknown kind")
+	}
+	ret := &principal.Principal{ID: &principal.ID{}}
+	err := util.Retry(ctx, func(ctx context.Context) error {
+		var refreshAfter time.Time
+		row := s.DB.QueryRow(ctx,
+			"SELECT principal, name, email_domain, refresh_after, refresh_status, refresh_token, "+
+				"claims, version "+
+				"FROM principals WHERE "+col+" = $1", val)
+		err := row.Scan(ret.ID, &ret.Label, &ret.EmailDomain, &refreshAfter, &ret.RefreshStatus,
+			&ret.RefreshToken, &ret.Claims, &ret.Version)
+		ret.RefreshAfter = timestamppb.New(refreshAfter)
+		return err
 	})
 	if err == pgx.ErrNoRows {
-		return nil, nil
+		return nil, status.Error(codes.NotFound, req.String())
 	}
 	return ret, err
 }
@@ -225,7 +204,7 @@ func (s *Server) watch(
 
 	lastVersion := int64(0)
 	for {
-		toSend, err := s.Load(ctx, id)
+		toSend, err := s.Load(ctx, &principal.LoadRequest{Kind: &principal.LoadRequest_ID{ID: id}})
 		if err != nil {
 			return err
 		}

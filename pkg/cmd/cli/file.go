@@ -59,7 +59,7 @@ func (c *CLI) file() *cobra.Command {
 				}
 			}
 			if tnt == nil {
-				tnt = c.config.Session.GetScope().GetOnLocation().GetTenantId()
+				tnt = c.Config.Session.GetScope().GetOnLocation().GetTenantId()
 			}
 			if tnt == nil {
 				return errors.New("--tenant required")

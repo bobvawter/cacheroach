@@ -106,11 +106,15 @@ func (s *Server) Find(scope *session.Scope, server token.Tokens_FindServer) erro
 		s.cache.Remove(cacheKey)
 	}
 	return util.RetryLoop(ctx, func(ctx context.Context, sideEffect *util.Marker) error {
-		rows, err := s.db.Query(ctx,
-			"SELECT session, tenant, path, capabilities, expires_at, note, name, super "+
-				"FROM sessions "+
-				"WHERE principal = $1 AND expires_at > now()",
-			sn.PrincipalId)
+		rows, err := s.db.Query(ctx, `
+WITH 
+  dom AS (SELECT substring(email, '@(.*)$') as email_domain FROM principals WHERE principal = $1 AND email != ''),
+  prns AS (SELECT principal FROM principals JOIN dom USING (email_domain) UNION SELECT $1::UUID)
+SELECT session, tenant, path, capabilities, expires_at, note, name, super
+FROM sessions
+JOIN prns USING (principal)
+WHERE expires_at > now()
+`, sn.PrincipalId)
 		if err != nil {
 			return err
 		}
@@ -393,6 +397,11 @@ func (s *Server) Validate(ctx context.Context, t *token.Token) (*session.Session
 		return nil, nil
 	}
 
+	// Ephemeral session; we'll see this with signed-requests.
+	if ret.ID.Zero() {
+		return ret, nil
+	}
+
 	if found, ok := s.cache.Get(ret.ID.AsUUID()); ok {
 		v := found.(*cached)
 		if v.expires.After(time.Now()) {
@@ -401,22 +410,20 @@ func (s *Server) Validate(ctx context.Context, t *token.Token) (*session.Session
 		s.cache.Remove(ret.ID.AsUUID())
 	}
 
-	if !ret.ID.Zero() {
-		if err := util.Retry(ctx, func(ctx context.Context) error {
-			var count int
-			err := s.db.QueryRow(ctx,
-				"SELECT count(*) "+
-					"FROM sessions "+
-					"WHERE session = $1 AND expires_at > now()",
-				ret.ID.AsUUID().String(),
-			).Scan(&count)
-			if count == 0 {
-				ret = nil
-			}
-			return err
-		}); err != nil {
-			return nil, err
+	if err := util.Retry(ctx, func(ctx context.Context) error {
+		var count int
+		err := s.db.QueryRow(ctx,
+			"SELECT count(*) "+
+				"FROM sessions "+
+				"WHERE session = $1 AND expires_at > now()",
+			ret.ID.AsUUID().String(),
+		).Scan(&count)
+		if count == 0 {
+			ret = nil
 		}
+		return err
+	}); err != nil {
+		return nil, err
 	}
 
 	if ret != nil {

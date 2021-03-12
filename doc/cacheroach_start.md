@@ -9,6 +9,7 @@ cacheroach start [flags]
 ### Options
 
 ```
+      --assumeSecure                   set this if you have a TLS load-balancer connecting to cacheroach over an unencrypted connection
       --bindAddr string                the local IP and port to bind to (default ":0")
       --cacheDir string                persistent cache location
       --cacheDiskSpace int             the size (in megabytes) of the persistent cache (default 1024)
@@ -21,6 +22,10 @@ cacheroach start [flags]
       --gracePeriod duration           the grace period for draining connections (default 10s)
   -h, --help                           help for start
       --key string                     a file that contains a private key
+      --oidcClientID string            the OIDC client ID
+      --oidcClientSecret string        the OIDC client secret
+      --oidcDomains strings            acceptable user email domains
+      --oidcIssuer string              the OIDC discovery base URL
       --purgeDuration duration         the length of time for which deleted data should be retained; set to 0 to disable (default 168h0m0s)
       --purgeLimit int                 the deletion batch size to use when purging old data; set to 0 to disable (default 1000)
       --readAmplificationBackoff int   slow chunk insertions if the CockroachDB cluster's read amplification rises above this (default 10)

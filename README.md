@@ -34,7 +34,7 @@ cacheroach -v -c root.cfg session delegate --for <PRINCIPAL> --on tenant --id <T
 cacheroach -v file ls -t <TENANT>
 # Set a default tenant id to minimize typing
 cacheroach tenant default <TENANT>
-# Upload the cacheroach binary
+# Upload a file
 echo "Hello World." > hello.txt
 cacheroach -v file put / hello.txt
 # Look at HTTP vhost mapping
@@ -82,8 +82,13 @@ Cacheroach uses a "capability, delegate, target" approach to authorization.
 A [Principal](./api/principal.proto) may have zero or more durable [Sessions](./api/session.proto)
 which grant the principal the permission to perform operations within the system.
 
-These sessions are exposed as signed [JWT tokens](https://jwt.io). Active sessions are maintained in
-a table to facilitate occasional invalidation checks.
+Automatic principal provisioning can be enabled through OIDC integration. Cacheroach will request
+OIDC credentials with an offline scope. Principals are periodically re-validated using the OIDC
+refresh token. A whitelist of email domains is provided as part of cacheroach's configuration to
+limit access to specified users.
+
+Sessions are exposed as signed [JWT tokens](https://jwt.io). Active sessions are maintained in a
+table to facilitate occasional invalidation checks.
 
 The API surface area uses a [declarative model](./api/capabilities.proto) to implement ACL checks in
 a [centralized](./pkg/enforcer) manner. All access checks will have been performed by the time an

@@ -9,14 +9,48 @@ RUN apt-get update && \
     unzip protoc-$PROTOVER-$PROTOARCH.zip -d /usr/
 WORKDIR /tmp/compile
 COPY . .
-RUN go mod download && \
-    go get google.golang.org/protobuf/cmd/protoc-gen-go \
-           google.golang.org/grpc/cmd/protoc-gen-go-grpc && \
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go \
+               google.golang.org/grpc/cmd/protoc-gen-go-grpc && \
     go generate -v tools.go && \
     CGO_ENABLED=0 go build -v -ldflags="-s -w" -o /usr/bin/cacheroach .
 
-FROM scratch
+# Create a single-binary docker image, including a set of core CA
+# certificates so that we can call out to any external APIs.
+FROM scratch AS cacheroach
 WORKDIR /data/
 ENTRYPOINT ["/usr/bin/cacheroach"]
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/bin/cacheroach /usr/bin/
+
+# This is a default configuration for Google Cloud Run. It assumes that
+# you have the secret manager API installed. A named secret should
+# contain a tar.gz file that has files with the @filename values below.
+#
+# The OIDC integration is optional, but if you're already deploying
+# into GCR, you need only to create credentials for an OAuth2 webapp.
+FROM cacheroach AS cloudrun
+# Expect $PORT from Cloud Run environment.
+ENV CACHE_MEMORY="128" \
+    CONNECT="@connect" \
+    GCLOUD_SECRET_NAME="" \
+    HMAC="@hmac" \
+    OIDC_CLIENT_ID="@oidc_client_id" \
+    OIDC_CLIENT_SECRET="@oidc_client_secret" \
+    OIDC_DOMAINS="cockroachlabs.com" \
+    OIDC_ISSUER="https://accounts.google.com"
+ENTRYPOINT [ \
+  "/usr/bin/cacheroach", \
+  "start", \
+  "--assumeSecure", \
+  "--bindAddr", ":$PORT", \
+  "--cacheMemory", "$CACHE_MEMORY", \
+  "--connect", "$CONNECT", \
+  "--oidcClientID", "$OIDC_CLIENT_ID", \
+  "--oidcClientSecret", "$OIDC_CLIENT_SECRET", \
+  "--oidcDomains", "$OIDC_DOMAINS", \
+  "--oidcIssuer", "$OIDC_ISSUER", \
+  "--signingKey", "$HMAC" \
+]
+
+# Set a default target for e.g. DockerHub builds.
+FROM cacheroach

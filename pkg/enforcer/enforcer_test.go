@@ -62,16 +62,11 @@ func Test(t *testing.T) {
 		{
 			ctx: ctx,
 			src: &principal.Principal{
-				ID:           pID,
-				Label:        "Label",
-				Version:      1,
-				Handles:      []string{"foo", "bar"},
-				PasswordHash: "hash",
-				PasswordSet:  "setting",
+				ID:      pID,
+				Version: 1,
 			},
 			expected: &principal.Principal{
 				ID:      pID,
-				Label:   "Label",
 				Version: 1,
 			},
 		},
@@ -82,18 +77,12 @@ func Test(t *testing.T) {
 				Scope:        &session.Scope{Kind: &session.Scope_OnPrincipal{OnPrincipal: pID}},
 			}),
 			src: &principal.Principal{
-				ID:           pID,
-				Label:        "Label",
-				Version:      1,
-				Handles:      []string{"foo", "bar"},
-				PasswordHash: "hash",
-				PasswordSet:  "setting",
+				ID:      pID,
+				Version: 1,
 			},
 			expected: &principal.Principal{
 				ID:      pID,
-				Label:   "Label",
 				Version: 1,
-				Handles: []string{"foo", "bar"},
 			},
 		},
 		{
@@ -104,19 +93,12 @@ func Test(t *testing.T) {
 			}),
 			dir: capabilities.Direction_REQUEST,
 			src: &principal.Principal{
-				ID:           pID,
-				Label:        "Label",
-				Version:      1,
-				Handles:      []string{"foo", "bar"},
-				PasswordHash: "hash",
-				PasswordSet:  "setting",
+				ID:      pID,
+				Version: 1,
 			},
 			expected: &principal.Principal{
-				ID:          pID,
-				Label:       "Label",
-				Version:     1,
-				Handles:     []string{"foo", "bar"},
-				PasswordSet: "setting",
+				ID:      pID,
+				Version: 1,
 			},
 		},
 	}
@@ -155,9 +137,7 @@ func TestEval(t *testing.T) {
 
 	pID := principal.NewID()
 	if _, err := rig.principals.Ensure(ctx, &principal.EnsureRequest{Principal: &principal.Principal{
-		ID:           pID,
-		Label:        "test user",
-		PasswordHash: " ",
+		ID: pID,
 	}}); !a.NoError(err) {
 		return
 	}

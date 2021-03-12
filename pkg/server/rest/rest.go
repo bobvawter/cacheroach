@@ -18,12 +18,14 @@ import "github.com/google/wire"
 
 // Set is used by wire.
 var Set = wire.NewSet(
+	ProvideCLIConfigHandler,
 	ProvideDebugMux,
 	ProvideFileHandler,
 	ProvideHealthz,
 	ProvideLatchWrapper,
-	ProvidePublicMux,
 	ProvidePProfWrapper,
+	ProvideProvision,
+	ProvidePublicMux,
 	ProvideRetrieve,
 	ProvideSessionWrapper,
 	ProvideVHostWrapper,

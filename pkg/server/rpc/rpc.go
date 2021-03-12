@@ -19,7 +19,6 @@ import (
 	"runtime/pprof"
 
 	"github.com/Mandala/go-log"
-	"github.com/bobvawter/cacheroach/api/auth"
 	"github.com/bobvawter/cacheroach/api/diag"
 	"github.com/bobvawter/cacheroach/api/file"
 	"github.com/bobvawter/cacheroach/api/principal"
@@ -51,7 +50,6 @@ func ProvideRPC(
 	elide *ElideInterceptor,
 	met *metrics.Interceptor,
 	vh *VHostInterceptor,
-	ath auth.AuthServer,
 	dia diag.DiagsServer,
 	fls file.FilesServer,
 	prn principal.PrincipalsServer,
@@ -96,7 +94,6 @@ func ProvideRPC(
 	)
 	reflection.Register(rpc)
 
-	auth.RegisterAuthServer(rpc, ath)
 	diag.RegisterDiagsServer(rpc, dia)
 	file.RegisterFilesServer(rpc, fls)
 	principal.RegisterPrincipalsServer(rpc, prn)

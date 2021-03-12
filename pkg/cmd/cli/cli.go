@@ -23,6 +23,7 @@ import (
 	"os"
 
 	"github.com/Mandala/go-log"
+	"github.com/bobvawter/cacheroach/pkg/cmd/cli/config"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
@@ -33,7 +34,7 @@ import (
 
 // CLI contains common state for the command-line tooling.
 type CLI struct {
-	config
+	config.Config
 
 	configDirty bool
 	configFile  string
@@ -142,7 +143,7 @@ func (c *CLI) start(*cobra.Command, []string) error {
 		return err
 	}
 	defer f.Close()
-	return json.NewDecoder(f).Decode(&c.config)
+	return json.NewDecoder(f).Decode(&c.Config)
 }
 
 func (c *CLI) stop(*cobra.Command, []string) error {
@@ -150,7 +151,7 @@ func (c *CLI) stop(*cobra.Command, []string) error {
 		return nil
 	}
 	p := os.ExpandEnv(c.configFile)
-	if err := c.config.writeToFile(p); err != nil {
+	if err := c.Config.WriteToFile(p); err != nil {
 		return err
 	}
 	c.logger.Infof("wrote configuration to: %s", p)

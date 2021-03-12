@@ -18,7 +18,7 @@ authentication services
 ### SEE ALSO
 
 * [cacheroach](cacheroach.md)	 - cacheroach is a file storage service built on CockroachDB
-* [cacheroach auth login](cacheroach_auth_login.md)	 - log into a cacheroach server
+* [cacheroach auth login](cacheroach_auth_login.md)	 - Log in via OIDC authentication
 * [cacheroach auth logout](cacheroach_auth_logout.md)	 - destroy authentication
 * [cacheroach auth set](cacheroach_auth_set.md)	 - log in using an authentication token
 * [cacheroach auth whoami](cacheroach_auth_whoami.md)	 - show the current principal
