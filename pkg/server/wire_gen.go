@@ -18,10 +18,11 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
+	"github.com/bobvawter/cacheroach/pkg/server/oidc"
 	"github.com/bobvawter/cacheroach/pkg/server/rest"
 	"github.com/bobvawter/cacheroach/pkg/server/rpc"
-	"github.com/bobvawter/cacheroach/pkg/store/auth"
 	"github.com/bobvawter/cacheroach/pkg/store/blob"
+	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/fs"
 	"github.com/bobvawter/cacheroach/pkg/store/principal"
 	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
@@ -56,6 +57,8 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	healthz := rest.ProvideHealthz(pool, logger)
 	debugMux := rest.ProvideDebugMux(handler, healthz)
+	latchWrapper := rest.ProvideLatchWrapper(busyLatch)
+	pProfWrapper := rest.ProvidePProfWrapper()
 	cacheConfig, cleanup2, err := storetesting.ProvideCacheConfig()
 	if err != nil {
 		cleanup()
@@ -68,15 +71,6 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		return nil, nil, err
 	}
 	store, cleanup4 := blob.ProvideStore(ctx, cacheCache, configConfig, pool, logger)
-	server, err := token.ProvideServer(configConfig, pool, logger)
-	if err != nil {
-		cleanup4()
-		cleanup3()
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	enforcerEnforcer := enforcer.ProvideEnforcer(logger, server)
 	fsStore, cleanup5, err := fs.ProvideStore(ctx, store, configConfig, pool, logger)
 	if err != nil {
 		cleanup4()
@@ -85,12 +79,19 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	pProfWrapper := rest.ProvidePProfWrapper()
-	latchWrapper := rest.ProvideLatchWrapper(busyLatch)
-	principalServer := &principal.Server{
+	server := &principal.Server{
 		Config: configConfig,
 		DB:     pool,
 		Logger: logger,
+	}
+	tokenServer, err := token.ProvideServer(configConfig, pool, logger)
+	if err != nil {
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
 	}
 	tenantServer := &tenant.Server{
 		DB:     pool,
@@ -100,7 +101,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		DB:     pool,
 		Logger: logger,
 	}
-	bootstrapper, err := bootstrap.ProvideBootstrap(ctx, store, pool, fsStore, logger, principalServer, server, tenantServer, vhostServer)
+	bootstrapper, err := bootstrap.ProvideBootstrap(ctx, store, pool, fsStore, logger, server, tokenServer, tenantServer, vhostServer)
 	if err != nil {
 		cleanup5()
 		cleanup4()
@@ -109,7 +110,16 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	sessionWrapper := rest.ProvideSessionWrapper(bootstrapper, server)
+	connector, err := oidc.ProvideConnector(ctx, factory, bootstrapper, config, logger, server, tokenServer)
+	if err != nil {
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	sessionWrapper := rest.ProvideSessionWrapper(bootstrapper, connector, tokenServer)
 	vHostMap, cleanup6, err := common.ProvideVHostMap(ctx, logger, vhostServer)
 	if err != nil {
 		cleanup5()
@@ -120,10 +130,22 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		return nil, nil, err
 	}
 	vHostWrapper := rest.ProvideVHostWrapper(logger, vHostMap)
+	cliConfigHandler := rest.ProvideCLIConfigHandler(config, latchWrapper, pProfWrapper, sessionWrapper, vHostWrapper)
+	enforcerEnforcer := enforcer.ProvideEnforcer(logger, tokenServer)
 	fileHandler := rest.ProvideFileHandler(store, enforcerEnforcer, fsStore, logger, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	wrapper := metrics.ProvideWrapper(factory)
+	provision, err := rest.ProvideProvision(config, connector, logger, server, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
+	if err != nil {
+		cleanup6()
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
-	authInterceptor, err := rpc.ProvideAuthInterceptor(logger, server)
+	authInterceptor, err := rpc.ProvideAuthInterceptor(connector, logger, tokenServer)
 	if err != nil {
 		cleanup6()
 		cleanup5()
@@ -144,11 +166,6 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		Logger: logger,
 		Mapper: vHostMap,
 	}
-	authServer := &auth.Server{
-		DB:         pool,
-		Principals: principalServer,
-		Tokens:     server,
-	}
 	diags := &diag.Diags{}
 	fsServer := &fs.Server{
 		Config: configConfig,
@@ -165,7 +182,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, busyInterceptor, elideInterceptor, interceptor, vHostInterceptor, authServer, diags, fsServer, principalServer, tenantServer, server, uploadServer, vhostServer)
+	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, busyInterceptor, elideInterceptor, interceptor, vHostInterceptor, diags, fsServer, server, tenantServer, tokenServer, uploadServer, vhostServer)
 	if err != nil {
 		cleanup6()
 		cleanup5()
@@ -175,7 +192,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	publicMux := rest.ProvidePublicMux(fileHandler, wrapper, retrieve, grpcServer)
+	publicMux := rest.ProvidePublicMux(cliConfigHandler, connector, fileHandler, wrapper, provision, retrieve, grpcServer)
 	serverServer, cleanup7, err := ProvideServer(ctx, busyLatch, v, config, debugMux, logger, publicMux)
 	if err != nil {
 		cleanup6()
@@ -189,9 +206,10 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	serverRig := &rig{
 		Server:     serverServer,
 		certs:      v,
-		principals: principalServer,
+		cfg:        configConfig,
+		principals: server,
 		tenants:    tenantServer,
-		tokens:     server,
+		tokens:     tokenServer,
 		vhosts:     vhostServer,
 	}
 	return serverRig, func() {
@@ -219,6 +237,7 @@ var (
 type rig struct {
 	*Server
 	certs      []tls.Certificate
+	cfg        *config.Config
 	principals principal2.PrincipalsServer
 	tenants    tenant2.TenantsServer
 	tokens     token2.TokensServer

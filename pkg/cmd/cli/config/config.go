@@ -11,11 +11,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cli
+// Package config contains a JSON-serializable configuration file for
+// use by the CLI tooling. This is a separate package to allow a
+// browser-based user to download a ready-to-run configuration file from
+// the server.
+package config
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,13 +30,12 @@ import (
 	"github.com/bobvawter/cacheroach/api/session"
 	"github.com/bobvawter/cacheroach/api/tenant"
 	"github.com/bobvawter/cacheroach/api/token"
-	"github.com/pkg/errors"
 	"golang.org/x/term"
 	"google.golang.org/protobuf/proto"
 )
 
-// config contains the JSON-serializable configuration data.
-type config struct {
+// Config contains the JSON-serializable configuration data.
+type Config struct {
 	DefaultTenant *tenant.ID
 	Host          string
 	Insecure      bool
@@ -39,9 +43,9 @@ type config struct {
 	Token         string
 }
 
-// clone returns a deep copy of the config.
-func (c *config) clone() *config {
-	ret := &config{
+// Clone returns a deep copy of the Config.
+func (c *Config) Clone() *Config {
+	ret := &Config{
 		Host:     c.Host,
 		Insecure: c.Insecure,
 		Token:    c.Token,
@@ -55,11 +59,11 @@ func (c *config) clone() *config {
 	return ret
 }
 
-// configureHostname parses the given host as a URL and updates the Host
+// ConfigureHostname parses the given host as a URL and updates the Host
 // and Insecure fields. The url must include a username and may include
 // a password. If no password is provided, then one will be read in a
 // secure fashion from the console.
-func (c *config) configureHostname(urlString string, requirePassword bool) (*url.URL, error) {
+func (c *Config) ConfigureHostname(urlString string, requirePassword bool) (*url.URL, error) {
 	u, err := url.Parse(urlString)
 	if err != nil {
 		return nil, err
@@ -103,15 +107,23 @@ func (c *config) configureHostname(urlString string, requirePassword bool) (*url
 	return u, nil
 }
 
-// configureSession extracts the elements from the IssueResponse.
-func (c *config) configureSession(sn *session.Session, tkn *token.Token) {
+// ConfigureSession extracts the elements from the IssueResponse.
+func (c *Config) ConfigureSession(sn *session.Session, tkn *token.Token) {
 	c.Session = sn
 	c.Token = tkn.Jwt
 }
 
-// writeToFile writes the configuration to disk. This method will create
+// WriteTo writes the configuration to the given writer.
+func (c *Config) WriteTo(w io.Writer) (int64, error) {
+	counter := &countingWriter{Writer: w}
+	e := json.NewEncoder(counter)
+	e.SetIndent("", "  ")
+	return counter.count, e.Encode(c)
+}
+
+// WriteToFile writes the configuration to disk. This method will create
 // any necessary directories.
-func (c *config) writeToFile(out string) error {
+func (c *Config) WriteToFile(out string) error {
 	out, err := filepath.Abs(out)
 	if err != nil {
 		return err
@@ -124,24 +136,17 @@ func (c *config) writeToFile(out string) error {
 		return err
 	}
 	defer f.Close()
-
-	w := json.NewEncoder(f)
-	w.SetIndent("", "  ")
-	return w.Encode(c)
+	_, err = c.WriteTo(f)
+	return err
 }
 
-// A wrapper around a proper credentials that will disable the GRPC code
-// path requiring secure transport.
-type insecureCredentials struct {
-	token string
+type countingWriter struct {
+	io.Writer
+	count int64
 }
 
-func (c *insecureCredentials) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
-	return map[string]string{
-		"authorization": "Bearer " + c.token,
-	}, nil
-}
-
-func (c *insecureCredentials) RequireTransportSecurity() bool {
-	return false
+func (w *countingWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	w.count += int64(n)
+	return n, err
 }

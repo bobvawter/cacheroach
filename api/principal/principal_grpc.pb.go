@@ -20,7 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 type PrincipalsClient interface {
 	Ensure(ctx context.Context, in *EnsureRequest, opts ...grpc.CallOption) (*EnsureResponse, error)
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (Principals_ListClient, error)
-	Load(ctx context.Context, in *ID, opts ...grpc.CallOption) (*Principal, error)
+	Load(ctx context.Context, in *LoadRequest, opts ...grpc.CallOption) (*Principal, error)
 	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Principals_WatchClient, error)
 }
 
@@ -73,7 +73,7 @@ func (x *principalsListClient) Recv() (*Principal, error) {
 	return m, nil
 }
 
-func (c *principalsClient) Load(ctx context.Context, in *ID, opts ...grpc.CallOption) (*Principal, error) {
+func (c *principalsClient) Load(ctx context.Context, in *LoadRequest, opts ...grpc.CallOption) (*Principal, error) {
 	out := new(Principal)
 	err := c.cc.Invoke(ctx, "/cacheroach.principal.Principals/Load", in, out, opts...)
 	if err != nil {
@@ -120,7 +120,7 @@ func (x *principalsWatchClient) Recv() (*Principal, error) {
 type PrincipalsServer interface {
 	Ensure(context.Context, *EnsureRequest) (*EnsureResponse, error)
 	List(*emptypb.Empty, Principals_ListServer) error
-	Load(context.Context, *ID) (*Principal, error)
+	Load(context.Context, *LoadRequest) (*Principal, error)
 	Watch(*WatchRequest, Principals_WatchServer) error
 	mustEmbedUnimplementedPrincipalsServer()
 }
@@ -135,7 +135,7 @@ func (UnimplementedPrincipalsServer) Ensure(context.Context, *EnsureRequest) (*E
 func (UnimplementedPrincipalsServer) List(*emptypb.Empty, Principals_ListServer) error {
 	return status.Errorf(codes.Unimplemented, "method List not implemented")
 }
-func (UnimplementedPrincipalsServer) Load(context.Context, *ID) (*Principal, error) {
+func (UnimplementedPrincipalsServer) Load(context.Context, *LoadRequest) (*Principal, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Load not implemented")
 }
 func (UnimplementedPrincipalsServer) Watch(*WatchRequest, Principals_WatchServer) error {
@@ -194,7 +194,7 @@ func (x *principalsListServer) Send(m *Principal) error {
 }
 
 func _Principals_Load_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ID)
+	in := new(LoadRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func _Principals_Load_Handler(srv interface{}, ctx context.Context, dec func(int
 		FullMethod: "/cacheroach.principal.Principals/Load",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PrincipalsServer).Load(ctx, req.(*ID))
+		return srv.(PrincipalsServer).Load(ctx, req.(*LoadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/bobvawter/cacheroach/api/vhost"
 	"github.com/bobvawter/cacheroach/pkg/bootstrap"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
+	"github.com/bobvawter/cacheroach/pkg/server/oidc"
 )
 
 // A Wrapper alters the behavior of an http.Handler.
@@ -69,29 +70,46 @@ type SessionWrapper Wrapper
 // ProvideSessionWrapper is called by wire.
 func ProvideSessionWrapper(
 	bootstrap *bootstrap.Bootstrapper,
+	connector *oidc.Connector,
 	tokens token.TokensServer,
 ) SessionWrapper {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			var jwt string
-			if hdr := req.Header.Get("authorization"); strings.Index(hdr, "Bearer ") == 0 {
-				jwt = hdr[7:]
-			} else if p := req.URL.Query().Get("access_token"); p != "" {
-				jwt = p
-			}
-			sn := bootstrap.PublicSession
-			if jwt != "" {
+			var sn *session.Session
+			// Find a JWT token somewhere in the request and validate it.
+			if jwt := extractJWT(req); jwt != "" {
 				var err error
 				if sn, err = tokens.Validate(req.Context(), &token.Token{Jwt: jwt}); err != nil {
-					w.WriteHeader(http.StatusUnauthorized)
-					return
+					sn = nil
 				}
+			}
+			// Ensure that the principal is still valid.
+			if sn != nil && connector.Validate(req.Context(), sn.PrincipalId) != nil {
+				sn = nil
+			}
+			// Fall back to an unauthenticated session.
+			if sn == nil {
+				sn = bootstrap.PublicSession
 			}
 			ctx := session.WithSession(req.Context(), sn)
 			req = req.WithContext(ctx)
 			h.ServeHTTP(w, req)
 		})
 	}
+}
+
+// extractJWT extracts an un-validated JWT from the request.
+func extractJWT(req *http.Request) string {
+	if hdr := req.Header.Get("authorization"); strings.Index(hdr, "Bearer ") == 0 {
+		return hdr[7:]
+	}
+	if p := req.URL.Query().Get("access_token"); p != "" {
+		return p
+	}
+	if c, err := req.Cookie("authorization"); err == nil {
+		return c.Value
+	}
+	return ""
 }
 
 // VHostWrapper will inject a VHost reference into the context.

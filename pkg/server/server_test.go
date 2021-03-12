@@ -26,7 +26,6 @@ import (
 
 	"io"
 
-	"github.com/bobvawter/cacheroach/api/auth"
 	"github.com/bobvawter/cacheroach/api/capabilities"
 	"github.com/bobvawter/cacheroach/api/file"
 	"github.com/bobvawter/cacheroach/api/principal"
@@ -34,12 +33,11 @@ import (
 	"github.com/bobvawter/cacheroach/api/tenant"
 	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/bobvawter/cacheroach/api/upload"
+	"github.com/bobvawter/cacheroach/pkg/claims"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/oauth"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -58,15 +56,10 @@ func TestSmoke(t *testing.T) {
 	defer cleanup()
 
 	pID := principal.NewID()
-	username := "you@example.com"
-	passwd := "Str0ngPassword!"
 	p := &principal.Principal{
-		Handles: []string{"username:" + username},
 		ID:      pID,
-		Label:   "Some User",
 		Version: 0,
 	}
-	a.NoError(p.SetPassword(passwd))
 	if _, err := rig.principals.Ensure(ctx, &principal.EnsureRequest{Principal: p}); !a.NoError(err) {
 		return
 	}
@@ -183,144 +176,70 @@ func TestSmoke(t *testing.T) {
 		if !a.NoError(err) {
 			return
 		}
-		a.Equal(http.StatusUnauthorized, resp.StatusCode)
-	})
-
-	t.Run("log in and delegate", func(t *testing.T) {
-		a := assert.New(t)
-
-		ath := auth.NewAuthClient(rig.Conn)
-		resp, err := ath.Login(ctx,
-			&auth.LoginRequest{Handle: "username:" + username, Password: passwd})
-		if !a.NoError(err) {
-			return
-		}
-		a.Equal(pID.String(), resp.GetSession().GetPrincipalId().String())
-		a.NotEmpty(resp.GetToken().GetJwt())
-		creds := grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{AccessToken: resp.Token.Jwt}))
-
-		tokens := token.NewTokensClient(rig.Conn)
-		sn, err := tokens.Current(ctx, &emptypb.Empty{}, creds)
-		if a.NoError(err) {
-			resp.GetSession().Note = "" // The note is stripped.
-			a.Equal(resp.GetSession().String(), sn.String())
-			a.True(resp.GetSession().Capabilities.GetDelegate())
-		}
-
-		// Create a delegated token.
-		template := &session.Session{
-			Capabilities: &capabilities.Capabilities{Read: true},
-			PrincipalId:  pID,
-			Scope: &session.Scope{Kind: &session.Scope_OnLocation{OnLocation: &session.Location{
-				TenantId: tID,
-				Path:     "/foo/bar",
-			}}},
-			ExpiresAt: timestamppb.New(time.Now().Add(time.Hour)),
-		}
-
-		restricted, err := tokens.Issue(ctx, &token.IssueRequest{Template: template}, creds)
-		if a.NoError(err) {
-			a.Equal("/foo/bar", restricted.GetIssued().GetScope().GetOnLocation().GetPath())
-			a.NotEqual(resp.Token.Jwt, restricted.Token.Jwt)
-		}
-
-		// Try creating a token on something we normally can't access.
-		tOther := tenant.NewID()
-		if _, err := rig.tenants.Ensure(ctx, &tenant.EnsureRequest{Tenant: &tenant.Tenant{
-			ID:    tOther,
-			Label: "More testing",
-		}}); !a.NoError(err) {
-			return
-		}
-
-		badTemplate := proto.Clone(template).(*session.Session)
-		badTemplate.GetScope().GetOnLocation().TenantId = tOther
-		_, err = tokens.Issue(ctx, &token.IssueRequest{Template: badTemplate}, creds)
-		if a.Error(err) {
-			s, _ := status.FromError(err)
-			a.Equal(codes.PermissionDenied, s.Code())
-		}
-
-		// Try creating a token for another principal.
-		pOther := principal.NewID()
-		if _, err := rig.principals.Ensure(ctx, &principal.EnsureRequest{
-			Principal: &principal.Principal{
-				ID:          pOther,
-				Label:       "More testing",
-				PasswordSet: "Nothing",
-			}}); !a.NoError(err) {
-			return
-		}
-
-		badTemplate = proto.Clone(template).(*session.Session)
-		badTemplate.PrincipalId = pOther
-		_, err = tokens.Issue(ctx, &token.IssueRequest{Template: badTemplate}, creds)
-		if a.Error(err) {
-			s, _ := status.FromError(err)
-			a.Equal(codes.PermissionDenied, s.Code())
-		}
+		a.Equal(http.StatusNotFound, resp.StatusCode)
 	})
 
 	t.Run("testLoadPrincipalWithElision", func(t *testing.T) {
 		a := assert.New(t)
 
-		// We should have stored a hash in the original object.
 		p := proto.Clone(p).(*principal.Principal)
-		a.NotEmpty(p.PasswordHash)
-		p.PasswordHash = ""
 
 		principals := principal.NewPrincipalsClient(rig.Conn)
-		loaded, err := principals.Load(ctx, pID, superTokenOpt)
+		loaded, err := principals.Load(ctx,
+			&principal.LoadRequest{Kind: &principal.LoadRequest_ID{ID: pID}}, superTokenOpt)
 		if a.NoError(err) {
-			a.Equal(p.String(), loaded.String())
+			a.True(loaded.Version >= p.Version)
+			a.Nil(loaded.RefreshAfter)
+			a.Empty(loaded.RefreshToken)
+			a.Empty(loaded.Claims)
 		}
 
 		in, err := principals.List(ctx, &emptypb.Empty{}, superTokenOpt)
 		if a.NoError(err) {
-			loaded, err := in.Recv()
-			if a.NoError(err) {
-				a.Equal(p.String(), loaded.String())
+			received, err := in.Recv()
+			if a.NoError(err) && proto.Equal(pID, received.ID) {
+				a.Equal(loaded.String(), received.String())
 			}
 		}
 		a.NoError(in.CloseSend())
 	})
 
-	t.Run("createPrincipalUsingSuperToken", func(t *testing.T) {
+	t.Run("testBootstrapFlow", func(t *testing.T) {
 		a := assert.New(t)
 
+		_, tkn, err := claims.Sign(time.Now(), &session.Session{
+			ExpiresAt:   timestamppb.New(time.Now().Add(time.Minute)),
+			Note:        "CLI bootstrap supertoken",
+			PrincipalId: nil,
+			Scope:       &session.Scope{Kind: &session.Scope_SuperToken{SuperToken: true}},
+		}, rig.cfg.SigningKeys[0])
+		if !a.NoError(err) {
+			return
+		}
+		creds := grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{AccessToken: tkn.Jwt}))
+
 		principals := principal.NewPrincipalsClient(rig.Conn)
-		ret, err := principals.Ensure(ctx, &principal.EnsureRequest{Principal: &principal.Principal{
-			Label:       "created",
-			PasswordSet: "woot!",
-		}}, superTokenOpt)
+		ret, err := principals.Ensure(ctx,
+			&principal.EnsureRequest{Principal: &principal.Principal{}},
+			creds)
 		if !a.NoError(err) {
 			return
 		}
 		a.NotNil(ret.Principal.ID)
 		a.Equal(int64(1), ret.Principal.Version)
-	})
 
-	t.Run("whoAmIFlow", func(t *testing.T) {
-		a := assert.New(t)
-
-		ath := auth.NewAuthClient(rig.Conn)
-		resp, err := ath.Login(ctx, &auth.LoginRequest{Handle: "username:" + username, Password: passwd})
-		if !a.NoError(err) {
-			return
+		tokens := token.NewTokensClient(rig.Conn)
+		resp, err := tokens.Issue(ctx, &token.IssueRequest{
+			Template: &session.Session{
+				ExpiresAt:   timestamppb.New(time.Now().AddDate(0, 0, 1)),
+				Note:        "cli bootstrap",
+				PrincipalId: ret.Principal.ID,
+				Scope:       &session.Scope{Kind: &session.Scope_SuperToken{SuperToken: true}},
+			},
+		}, creds)
+		if a.NoError(err) {
+			a.NotEmpty(resp.Token.Jwt)
 		}
-		if !a.NoError(err) {
-			return
-		}
-		sn := resp.Session
-
-		creds := grpc.PerRPCCredentials(oauth.NewOauthAccess(
-			&oauth2.Token{AccessToken: resp.Token.Jwt}))
-		p, err := principal.NewPrincipalsClient(rig.Conn).Load(ctx, sn.PrincipalId, creds)
-		if !a.NoError(err) {
-			return
-		}
-		a.NotEmpty(p.Handles)
-		a.Equal(pID.String(), p.ID.String())
 	})
 
 	t.Run("rpc put and http get", func(t *testing.T) {

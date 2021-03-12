@@ -28,6 +28,7 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/enforcer"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/store"
+	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
 	"github.com/google/wire"
 )
@@ -35,6 +36,7 @@ import (
 type rig struct {
 	*Server
 	certs      []tls.Certificate
+	cfg        *config.Config
 	principals principal.PrincipalsServer
 	tenants    tenant.TenantsServer
 	tokens     token.TokensServer

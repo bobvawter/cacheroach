@@ -124,18 +124,24 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE TABLE IF NOT EXISTS principals (
   region STRING NOT NULL DEFAULT IFNULL(crdb_internal.locality_value('region'), 'global') CHECK (length(region)>0),
   principal UUID NOT NULL UNIQUE,
-  label STRING NOT NULL CHECK (length(label) > 0),
-  pw_hash STRING NOT NULL CHECK (length(pw_hash) > 0),
+
+  -- A principal may be created to delegate access to all users within a given email domain.
+  email_domain STRING NOT NULL DEFAULT '',
+
+  refresh_after TIMESTAMPTZ NOT NULL DEFAULT 0::TIMESTAMPTZ, -- The time at which the claims must be revalidated
+  refresh_status INT8 NOT NULL DEFAULT 0, -- Refresh state enum
+  refresh_token STRING NOT NULL DEFAULT '', -- OAuth2 refresh token to achieve revalidation
+
+  -- We're going to store the entire OIDC claim block for future
+  -- reference and extract the well-known fields that we care about.
+  claims JSONB,
+  email STRING NOT NULL AS (lower(IFNULL(claims->>'email', ''))) STORED,
+  name STRING NOT NULL AS (IFNULL(claims->>'name', principal::string)) STORED,
+  
   version INT8 NOT NULL CHECK (version > 0),
-  PRIMARY KEY (region, principal)
-)
-`, `
-CREATE TABLE IF NOT EXISTS principal_handles (
-  region STRING NOT NULL DEFAULT IFNULL(crdb_internal.locality_value('region'), 'global') CHECK (length(region)>0),
-  -- The globally-unique handle, e.g. email:you@example.com, sms:+15551231234
-  urn STRING NOT NULL UNIQUE,
-  principal UUID NOT NULL REFERENCES principals (principal) ON DELETE CASCADE,
-  PRIMARY KEY (region, urn)
+  PRIMARY KEY (region, principal),
+  UNIQUE INDEX (email_domain) WHERE email_domain != '',
+  UNIQUE INDEX (email) WHERE email != ''
 )
 `, `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -156,7 +162,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
   PRIMARY KEY (region, session),
   INDEX (principal, tenant, path),
-  UNIQUE INDEX (principal, name) WHERE length(name) > 0
+  UNIQUE INDEX (principal, name) WHERE name != ''
 )
 `, `
 CREATE TABLE IF NOT EXISTS uploads (

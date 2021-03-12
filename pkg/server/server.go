@@ -28,6 +28,7 @@ import (
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/pkg/server/common"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
+	"github.com/bobvawter/cacheroach/pkg/server/oidc"
 	"github.com/bobvawter/cacheroach/pkg/server/rest"
 	"github.com/bobvawter/cacheroach/pkg/server/rpc"
 	"github.com/google/wire"
@@ -41,6 +42,7 @@ import (
 var Set = wire.NewSet(
 	common.Set,
 	diag.Set,
+	oidc.Set,
 	rest.Set,
 	rpc.Set,
 	ProvideCertificates,

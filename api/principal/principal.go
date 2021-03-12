@@ -21,7 +21,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // Unauthenticated is a well-known ID that represents an unauthenticated user.
@@ -101,14 +100,4 @@ func (x *ID) Value() (driver.Value, error) {
 // Zero returns true if the ID is the zero value.
 func (x *ID) Zero() bool {
 	return len(x.GetData()) == 0
-}
-
-// SetPassword updates PasswordHash based on a new, plain-text password.
-func (x *Principal) SetPassword(pw string) error {
-	h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	x.PasswordHash = string(h)
-	return nil
 }

@@ -15,20 +15,72 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
+	"html/template"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/api/capabilities"
+	"github.com/bobvawter/cacheroach/api/principal"
 	"github.com/bobvawter/cacheroach/api/session"
 	"github.com/bobvawter/cacheroach/api/vhost"
+	cliConfig "github.com/bobvawter/cacheroach/pkg/cmd/cli/config"
 	"github.com/bobvawter/cacheroach/pkg/enforcer"
+	"github.com/bobvawter/cacheroach/pkg/server/common"
+	"github.com/bobvawter/cacheroach/pkg/server/oidc"
 	"github.com/bobvawter/cacheroach/pkg/store/blob"
 	"github.com/bobvawter/cacheroach/pkg/store/fs"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 )
+
+// CLIConfigHandler allows a user to download a ready-to-run CLI configuration file.
+type CLIConfigHandler http.Handler
+
+// ProvideCLIConfigHandler is called by wire.
+func ProvideCLIConfigHandler(
+	cfg *common.Config,
+	latchWrapper LatchWrapper,
+	pprofWrapper PProfWrapper,
+	sessionWrapper SessionWrapper,
+	vhostWrapper VHostWrapper,
+) CLIConfigHandler {
+	fn := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-disposition", `attachment; filename="cacheroach.cfg"`)
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = makeConfig(r.Context(), r, cfg.IsSecure(r)).WriteTo(w)
+	})
+
+	return wrap(fn, latchWrapper, vhostWrapper, sessionWrapper, pprofWrapper)
+}
+
+func makeConfig(ctx context.Context, r *http.Request, secure bool) *cliConfig.Config {
+	sn := session.FromContext(ctx)
+	vh := vhost.FromContext(ctx)
+
+	host := r.Host
+	if _, _, err := net.SplitHostPort(host); err == nil {
+		// Already has a port number
+	} else if secure {
+		host += ":443"
+	} else {
+		host += ":80"
+	}
+
+	return &cliConfig.Config{
+		DefaultTenant: vh.GetTenantId(),
+		Host:          host,
+		Insecure:      !secure,
+		Session:       sn,
+		Token:         extractJWT(r),
+	}
+}
 
 // FileHandler implements a traditional web-server.
 type FileHandler http.Handler
@@ -140,7 +192,7 @@ func ProvideFileHandler(
 		}
 	})
 
-	return pprofWrapper(sessionWrapper(vHostWrapper(latchWrapper(fn))))
+	return wrap(fn, latchWrapper, vHostWrapper, sessionWrapper, pprofWrapper)
 }
 
 // Healthz verifies database connectivity.
@@ -206,5 +258,89 @@ func ProvideRetrieve(
 		http.ServeContent(w, req, f.Name(), f.ModTime(), f)
 	})
 
-	return pprofWrapper(sessionWrapper(vHostWrapper(latchWrapper(fn))))
+	return wrap(fn, latchWrapper, vHostWrapper, sessionWrapper, pprofWrapper)
+}
+
+// Provision hosts a trivial landing page to trigger OIDC login.
+type Provision http.Handler
+
+// ProvideProvision is called by wire.
+func ProvideProvision(
+	cfg *common.Config,
+	connector *oidc.Connector,
+	logger *log.Logger,
+	principals principal.PrincipalsServer,
+	pprofWrapper PProfWrapper,
+	latchWrapper LatchWrapper,
+	sessionWrapper SessionWrapper,
+	vHostWrapper VHostWrapper,
+) (Provision, error) {
+	type Data struct {
+		Config string
+		P      *principal.Principal
+		Port   int
+	}
+
+	tmpl, err := template.New("landing").Parse(`
+<!DOCTYPE html>
+<html><head><title>Hello Cacheroach!</title></head>
+<body>Hello {{.P.Label}} aka Principal {{.P.ID.AsUUID}}!<br/>
+{{if and .Config .Port}}
+<form name="f" method="POST" target="_self" action="http://localhost:{{.Port}}/" >
+<input name="config" value="{{.Config}}" type="hidden" />
+</form>
+<script>document.f.requestSubmit()</script>
+{{end}}
+Install CLI locally with <code>go get github.com/bobvawter/cacheroach</code><br/>
+<a href="config">Click here</a> to download a CLI configuration file and move it to <code>$HOME/.cacheroach/config</code><br/>
+Test your setup with <code>cacheroach auth whoami</code>
+</body></html>
+`)
+	if err != nil {
+		return nil, err
+	}
+
+	fn := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sn := session.FromContext(r.Context())
+
+		if proto.Equal(principal.Unauthenticated, sn.PrincipalId) {
+			if !connector.Redirect(w, r, r.URL) {
+				http.Error(w, "not logged in and no OIDC provider", http.StatusUnauthorized)
+			}
+			return
+		}
+
+		p, err := principals.Load(r.Context(), &principal.LoadRequest{
+			Kind: &principal.LoadRequest_ID{ID: sn.PrincipalId}})
+		if err != nil {
+			logger.Errorf("could not load principal %s: %v", sn.PrincipalId.AsUUID(), err)
+			http.Error(w, "could not load principal", http.StatusInternalServerError)
+			return
+		}
+
+		data := &Data{P: p}
+		if raw := r.URL.Query().Get("port"); raw != "" {
+			data.Port, err = strconv.Atoi(raw)
+			if err != nil {
+				http.Error(w, "bad port value", http.StatusBadRequest)
+				return
+			}
+
+			buf, _ := json.Marshal(makeConfig(r.Context(), r, cfg.IsSecure(r)))
+			data.Config = string(buf)
+		}
+
+		w.Header().Add("content-type", "text/html; charset=utf-8")
+		if err := tmpl.Execute(w, data); err != nil {
+			logger.Errorf("could not execute template: %v", err)
+		}
+	})
+	return wrap(fn, latchWrapper, vHostWrapper, sessionWrapper, pprofWrapper), nil
+}
+
+func wrap(h http.Handler, wrappers ...func(http.Handler) http.Handler) http.Handler {
+	for i := range wrappers {
+		h = wrappers[i](h)
+	}
+	return h
 }

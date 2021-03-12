@@ -31,8 +31,6 @@ services:
       done
       "
   cacheroach:
-    #    build:
-    #      context: .
     image: bobvawter/cacheroach:latest
     depends_on:
       - cockroachdb

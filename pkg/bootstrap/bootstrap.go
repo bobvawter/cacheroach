@@ -16,8 +16,8 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
-
 	"time"
 
 	"github.com/Mandala/go-log"
@@ -88,13 +88,21 @@ func ProvideBootstrap(
 		return nil, err
 	}
 
-	if found, err := principals.Load(ctx, principal.Unauthenticated); err != nil {
-		return nil, err
-	} else if found == nil {
+	if found, _ := principals.Load(ctx, &principal.LoadRequest{
+		Kind: &principal.LoadRequest_ID{
+			ID: principal.Unauthenticated,
+		}}); found == nil {
+		claimBytes, err := json.Marshal(map[string]string{
+			"name":   "Unauthenticated Principal",
+			"source": "bootstrap",
+		})
+		if err != nil {
+			return nil, err
+		}
+
 		p := &principal.Principal{
-			PasswordHash: " ", // This value is invalid bcrypt
-			ID:           principal.Unauthenticated,
-			Label:        "Unauthenticated Principal",
+			ID:     principal.Unauthenticated,
+			Claims: claimBytes,
 		}
 		req := &principal.EnsureRequest{Principal: p}
 		if _, err := principals.Ensure(ctx, req); errors.Is(err, util.ErrVersionSkew) {

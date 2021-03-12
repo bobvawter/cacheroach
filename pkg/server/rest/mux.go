@@ -21,6 +21,7 @@ import (
 
 	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/server/diag"
+	"github.com/bobvawter/cacheroach/pkg/server/oidc"
 	"google.golang.org/grpc"
 )
 
@@ -31,8 +32,11 @@ type PublicMux struct {
 
 // ProvidePublicMux is called by wire.
 func ProvidePublicMux(
+	cliConfig CLIConfigHandler,
+	connector *oidc.Connector,
 	fileHandler FileHandler,
 	measure metrics.Wrapper,
+	provision Provision,
 	retrieve Retrieve,
 	rpc *grpc.Server,
 ) PublicMux {
@@ -40,6 +44,9 @@ func ProvidePublicMux(
 	retrieve = measure(retrieve, "files")
 	mux := http.NewServeMux()
 
+	mux.HandleFunc(oidc.ReceivePath, connector.Receive)
+	mux.Handle("/_/v0/config", cliConfig)
+	mux.Handle("/_/v0/provision", provision)
 	mux.Handle("/_/v0/retrieve/", retrieve)
 	mux.Handle("/_/", http.NotFoundHandler())
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

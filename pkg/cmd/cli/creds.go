@@ -11,30 +11,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//+build wireinject
-
-package auth
+package cli
 
 import (
 	"context"
-
-	"github.com/bobvawter/cacheroach/pkg/store/principal"
-	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
-	"github.com/bobvawter/cacheroach/pkg/store/token"
-	"github.com/google/wire"
 )
 
-type rig struct {
-	auth       *Server
-	principals *principal.Server
+// A wrapper around a proper credentials that will disable the GRPC code
+// path requiring secure transport.
+type insecureCredentials struct {
+	token string
 }
 
-func testRig(ctx context.Context) (*rig, func(), error) {
-	panic(wire.Build(
-		Set,
-		storetesting.Set,
-		principal.Set,
-		token.Set,
-		wire.Struct(new(rig), "*"),
-	))
+func (c *insecureCredentials) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + c.token,
+	}, nil
+}
+
+func (c *insecureCredentials) RequireTransportSecurity() bool {
+	return false
 }

@@ -155,9 +155,9 @@ LEFT JOIN rope_length USING (tenant, hash)
 
 // Retrieve implements file.FilesServer.
 func (s *Server) Retrieve(
-	_ context.Context, req *file.RetrievalRequest,
+	ctx context.Context, req *file.RetrievalRequest,
 ) (*file.RetrievalResponse, error) {
-	sn, ret, err := s.retrievePath(req.Tenant, req.Path, req.Version, req.ValidFor.AsDuration())
+	sn, ret, err := s.retrievePath(ctx, req.Tenant, req.Path, req.Version, req.ValidFor.AsDuration())
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +169,12 @@ func (s *Server) Retrieve(
 
 // retrievePath cooks up a signed access path to retrieve the file.
 func (s *Server) retrievePath(
-	tID *tenant.ID, filePath string, version int64, validity time.Duration,
+	ctx context.Context, tID *tenant.ID, filePath string, version int64, validity time.Duration,
 ) (*session.Session, string, error) {
-
+	parent := session.FromContext(ctx)
 	sn := &session.Session{
 		Capabilities: &capabilities.Capabilities{Read: true},
+		PrincipalId:  parent.PrincipalId,
 		Scope: &session.Scope{
 			Kind: &session.Scope_OnLocation{
 				OnLocation: &session.Location{

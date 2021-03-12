@@ -14,7 +14,14 @@
 package cli
 
 import (
-	"github.com/bobvawter/cacheroach/api/auth"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
 	"github.com/bobvawter/cacheroach/api/session"
 	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/spf13/cobra"
@@ -28,33 +35,55 @@ func (c *CLI) auth() *cobra.Command {
 	}
 	top.AddCommand(
 		&cobra.Command{
-			Use:   "login https://username[:password]@cacheroach.server/",
-			Short: "log into a cacheroach server",
-			Long: "if a password is not specified, " +
-				"it will be securely prompted for",
-			Args: cobra.ExactArgs(1),
+			Use:   "login https://cacheroach.server",
+			Short: "Log in via OIDC authentication",
+			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				u, err := c.configureHostname(args[0], true)
-				if err != nil {
-					return err
-				}
-				password, _ := u.User.Password()
-
-				conn, err := c.conn(cmd.Context())
-				if err != nil {
-					return err
-				}
-				client := auth.NewAuthClient(conn)
-				resp, err := client.Login(cmd.Context(), &auth.LoginRequest{
-					Handle:   "username:" + u.User.Username(),
-					Password: password,
+				l, err := net.ListenTCP("tcp4", &net.TCPAddr{
+					IP: net.IPv4(127, 0, 0, 1),
 				})
 				if err != nil {
 					return err
 				}
+				c.logger.Debugf("listening on %s", l.Addr())
+				go func() {
+					<-cmd.Context().Done()
+					_ = l.Close()
+				}()
 
-				c.configureSession(resp.Session, resp.Token)
-				c.configDirty = true
+				u, err := url.Parse(args[0])
+				if err != nil {
+					return err
+				}
+				u.Path = "/_/v0/provision"
+				u.RawQuery = url.Values{"port": []string{strconv.Itoa(l.Addr().(*net.TCPAddr).Port)}}.Encode()
+				fmt.Printf("Navigate to %s\n", u)
+
+				_ = http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+					defer l.Close()
+
+					w.WriteHeader(http.StatusAccepted)
+					w.Write([]byte("<!DOCTYPE html><html><body>You can close this window now." +
+						"<script>window.close()</script></body></html>"))
+
+					if err := req.ParseForm(); err != nil {
+						c.logger.Errorf("could not parse data: %v", err)
+						return
+					}
+
+					cfg := req.Form.Get("config")
+					if cfg == "" {
+						c.logger.Error("request missing config")
+						return
+					}
+
+					if err := json.NewDecoder(strings.NewReader(cfg)).Decode(&c.Config); err != nil {
+						c.logger.Errorf("could not decode configuration")
+						return
+					}
+					c.configDirty = true
+					fmt.Println("Success!")
+				}))
 
 				return nil
 			},
@@ -74,7 +103,7 @@ func (c *CLI) auth() *cobra.Command {
 					c.logger.Warnf("could not invalidate session on server: %v", err)
 				}
 
-				c.config.Token = ""
+				c.Config.Token = ""
 				c.configDirty = true
 				return nil
 			},
@@ -84,7 +113,7 @@ func (c *CLI) auth() *cobra.Command {
 			Short: "log in using an authentication token",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				u, err := c.configureHostname(args[0], false)
+				u, err := c.ConfigureHostname(args[0], false)
 				if err != nil {
 					return err
 				}

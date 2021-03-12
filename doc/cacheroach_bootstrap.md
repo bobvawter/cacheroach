@@ -7,7 +7,7 @@ create a super-user principal using the server's HMAC key
 This command should be used to create an initial user on a newly-created cacheroach installation. It requires access to the server's HMAC key that is used to sign tokens. The resulting session will have superuser access; the resulting configuration file should be treated with the same security as the key.
 
 ```
-cacheroach bootstrap [flags] https://username[:password]@cacheroach.server/
+cacheroach bootstrap [flags] https://cacheroach.server/
 ```
 
 ### Options

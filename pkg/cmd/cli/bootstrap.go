@@ -38,7 +38,7 @@ type bootstrap struct {
 func (c *CLI) boostrap() *cobra.Command {
 	params := &bootstrap{CLI: c}
 	ret := &cobra.Command{
-		Use:   "bootstrap [flags] https://username[:password]@cacheroach.server/",
+		Use:   "bootstrap [flags] https://cacheroach.server/",
 		Short: "create a super-user principal using the server's HMAC key",
 		Long: "This command should be used to create an initial user on a newly-created " +
 			"cacheroach installation. It requires access to the server's HMAC key that is used " +
@@ -56,10 +56,6 @@ func (c *CLI) boostrap() *cobra.Command {
 }
 
 func (b *bootstrap) execute(ctx context.Context, args []string) error {
-	u, err := b.configureHostname(args[0], false)
-	if err != nil {
-		return err
-	}
 	if b.hmacKey == "" {
 		return errors.New("supertoken is required")
 	}
@@ -85,26 +81,18 @@ func (b *bootstrap) execute(ctx context.Context, args []string) error {
 		return err
 	}
 
-	p := &principal.Principal{
-		Handles: []string{"username:" + u.User.Username()},
-		Label:   u.User.Username(),
-		ID:      principal.NewID(),
-	}
-	if pwd, ok := u.User.Password(); ok {
-		p.PasswordSet = pwd
-	}
-	req := &principal.EnsureRequest{Principal: p}
-	_, err = principal.NewPrincipalsClient(conn).Ensure(ctx, req)
+	req := &principal.EnsureRequest{Principal: &principal.Principal{}}
+	p, err := principal.NewPrincipalsClient(conn).Ensure(ctx, req)
 	if err != nil {
 		return err
 	}
-	b.logger.Tracef("created principal: %s", p.ID.AsUUID())
+	b.logger.Tracef("created principal: %s", p.Principal.ID.AsUUID())
 
 	resp, err := token.NewTokensClient(conn).Issue(ctx, &token.IssueRequest{
 		Template: &session.Session{
 			ExpiresAt:   timestamppb.New(time.Now().AddDate(0, 0, b.validDays)),
 			Note:        "cli bootstrap",
-			PrincipalId: p.ID,
+			PrincipalId: p.Principal.ID,
 			Scope:       &session.Scope{Kind: &session.Scope_SuperToken{SuperToken: true}},
 		},
 	})
@@ -113,7 +101,7 @@ func (b *bootstrap) execute(ctx context.Context, args []string) error {
 	}
 	b.logger.Tracef("issued session: %s", resp.Issued.ID.AsUUID())
 
-	b.configureSession(resp.Issued, resp.Token)
+	b.ConfigureSession(resp.Issued, resp.Token)
 	b.configDirty = true
 	return nil
 }

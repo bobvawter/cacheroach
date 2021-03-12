@@ -16,10 +16,25 @@ package cacheroach.principal;
 import "capabilities.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
 option go_package = "github.com/bobvawter/cacheroach/api/principal";
 
 message ID {
   bytes data = 1;
+}
+
+enum TokenStatus {
+  // The token has not (yet) been validated.
+  UNKNOWN = 0;
+  // The token should be considered valid until the refresh_after time.
+  VALID = 1;
+  // The token is being refreshed by another instance.  It should be
+  // considered valid until the listed refresh time, at which point it
+  // should be refreshed again.
+  REFRESHING = 2;
+  // The token could not be revalidated and no further attempts should
+  // be made.
+  PERMANENT_FAILURE = 3;
 }
 
 message Principal {
@@ -36,30 +51,52 @@ message Principal {
   ID ID = 1;
   string label = 2;
   int64 version = 3;
-  repeated string handles = 4 [
+  // OIDC claims as provided by an authentication server.
+  bytes claims = 4 [
     (capabilities.field_rule) = {
       message: "must have pii access"
-      may: {
-        capabilities: {pii: true}
-        scope: {on_principal: {field: 1}}
+      or : {
+        rule: {
+          and: {
+            rule: {direction: REQUEST}
+            rule : {auth_status: SUPER}
+          }
+        }
+        rule: {
+          and: {
+            rule: {direction: RESPONSE}
+            rule: {may: {
+              capabilities: {pii: true}
+              scope: {on_principal: {field: 1}}
+            }}
+          }
+        }
       }
     }
   ];
+  // If present, indicates that the principal represents all users whose
+  // email address are in the given domain.
+  string email_domain = 5;
+  string refresh_token = 66 [
+    (capabilities.field_rule).never = true
+  ];
+  google.protobuf.Timestamp refresh_after = 67 [
+    (capabilities.field_rule).never = true
+  ];
+  TokenStatus refresh_status = 68 [
+    (capabilities.field_rule).never = true
+  ];
+}
 
-  // Used internally, not exposed to clients.
-  string password_hash = 32 [
-    (capabilities.field_rule) = {
-      message: "internal use only"
-      never: true
-    }
-  ];
-  // A plain-text password which will be hashed by the server.
-  string password_set = 33 [
-    (capabilities.field_rule) = {
-      message: "not returned to caller"
-      direction: REQUEST
-    }
-  ];
+message LoadRequest {
+  oneof Kind {
+    // Load a Principal based on ID.
+    ID ID = 1;
+    // Load a Principal by email address.
+    string email = 2;
+    // Load a domain-level Principal.
+    string email_domain = 3;
+  }
 }
 
 message WatchRequest {
@@ -83,7 +120,7 @@ service Principals {
   rpc List (google.protobuf.Empty) returns (stream Principal) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
-  rpc Load (ID) returns (Principal) {
+  rpc Load (LoadRequest) returns (Principal) {
     option idempotency_level = NO_SIDE_EFFECTS;
     option (capabilities.method_rule).auth_status = LOGGED_IN;
   }

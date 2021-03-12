@@ -14,6 +14,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"io"
 	"strconv"
 	"time"
@@ -34,7 +35,7 @@ func (c *CLI) principal() *cobra.Command {
 		Short: "principal management",
 	}
 
-	var createOut, label, password string
+	var createDomain, createOut string
 	create := &cobra.Command{
 		Use:   "create <username>",
 		Short: "create a principal",
@@ -45,19 +46,19 @@ func (c *CLI) principal() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			claimBytes, err := json.Marshal(map[string]string{
+				"name":   username,
+				"source": "cli principal",
+			})
+			if err != nil {
+				return err
+			}
 			req := &principal.EnsureRequest{
 				Principal: &principal.Principal{
-					ID:      principal.NewID(),
-					Handles: []string{"username:" + username},
+					ID:          principal.NewID(),
+					Claims:      claimBytes,
+					EmailDomain: createDomain,
 				},
-			}
-			if label == "" {
-				req.Principal.Label = username
-			} else {
-				req.Principal.Label = label
-			}
-			if password != "" {
-				req.Principal.PasswordSet = password
 			}
 			prn, err := principal.NewPrincipalsClient(conn).Ensure(cmd.Context(), req)
 			if err != nil {
@@ -79,14 +80,14 @@ func (c *CLI) principal() *cobra.Command {
 				return err
 			}
 
-			cfg := c.config.clone()
+			cfg := c.Config.Clone()
 			cfg.Session = iss.Issued
 			cfg.Token = iss.Token.Jwt
 
 			if createOut == "" {
 				createOut = username + ".cfg"
 			}
-			if err := cfg.writeToFile(createOut); err != nil {
+			if err := cfg.WriteToFile(createOut); err != nil {
 				return err
 			}
 			c.logger.Infof("Wrote configuration to %s", createOut)
@@ -96,12 +97,11 @@ func (c *CLI) principal() *cobra.Command {
 			return nil
 		},
 	}
+	create.Flags().StringVar(&createDomain, "emailDomain", "",
+		"create a unique principal that represents all principals with "+
+			"an email address in the given domain")
 	create.Flags().StringVarP(&createOut, "out", "o", "",
 		"write a new configuration file, defaults to username.cfg")
-	create.Flags().StringVar(&label, "label", "",
-		"set the principal's label (defaults to username)")
-	create.Flags().StringVar(&password, "password", "",
-		"set a password when creating the principal")
 
 	ret.AddCommand(
 		create,
@@ -120,7 +120,7 @@ func (c *CLI) principal() *cobra.Command {
 				}
 				out := newTabs()
 				defer out.Close()
-				out.Printf("ID\tVersion\tLabel\tHandles\n")
+				out.Printf("ID\tVersion\tLabel\tDomain\tClaims\n")
 				for {
 					p, err := data.Recv()
 					if errors.Is(err, io.EOF) {
@@ -128,11 +128,7 @@ func (c *CLI) principal() *cobra.Command {
 					} else if err != nil {
 						return err
 					}
-					out.Printf("%s\t%d\t%s", p.ID.AsUUID(), p.Version, p.Label)
-					for i := range p.Handles {
-						out.Printf("\t%s", p.Handles[i])
-					}
-					out.Printf("\n")
+					out.Printf("%s\t%d\t%s\t%s\t%s\n", p.ID.AsUUID(), p.Version, p.Label, p.EmailDomain, p.Claims)
 				}
 				return nil
 			},

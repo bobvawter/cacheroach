@@ -43,9 +43,8 @@ func TestUploadFlow(t *testing.T) {
 	pID := principal.NewID()
 	if _, err := rig.principals.Ensure(ctx, &principal.EnsureRequest{
 		Principal: &principal.Principal{
-			ID:           pID,
-			Label:        "User",
-			PasswordHash: " ",
+			ID:    pID,
+			Label: "User",
 		}}); !a.NoError(err) {
 		return
 	}
