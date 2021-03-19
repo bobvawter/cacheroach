@@ -157,18 +157,18 @@ LEFT JOIN rope_length USING (tenant, hash)
 func (s *Server) Retrieve(
 	ctx context.Context, req *file.RetrievalRequest,
 ) (*file.RetrievalResponse, error) {
-	sn, ret, err := s.retrievePath(ctx, req.Tenant, req.Path, req.Version, req.ValidFor.AsDuration())
+	sn, ret, err := s.retrieveURI(ctx, req.Tenant, req.Path, req.Version, req.ValidFor.AsDuration())
 	if err != nil {
 		return nil, err
 	}
 	return &file.RetrievalResponse{
 		ExpiresAt: sn.ExpiresAt,
-		GetPath:   ret,
+		GetUri:    ret,
 	}, nil
 }
 
-// retrievePath cooks up a signed access path to retrieve the file.
-func (s *Server) retrievePath(
+// retrieveURI cooks up a signed access path to retrieve the file.
+func (s *Server) retrieveURI(
 	ctx context.Context, tID *tenant.ID, filePath string, version int64, validity time.Duration,
 ) (*session.Session, string, error) {
 	parent := session.FromContext(ctx)

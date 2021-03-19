@@ -106,11 +106,11 @@ message RetrievalRequest {
 }
 
 message RetrievalResponse {
-  // A server-relative HTTP GET request path to retrieve the data. This
-  // path will contain an authentication token that permits access to
-  // the file's contents; the subsequent request need not be otherwise
+  // A server-relative HTTP GET request to retrieve the data. This URI
+  // will contain an authentication token that permits access to the
+  // file's contents; the subsequent request need not be otherwise
   // authenticated.
-  string get_path = 1;
+  string get_uri = 1;
   // If present, the expiration time of the token.
   google.protobuf.Timestamp expires_at = 2;
   // The metadata of the requested file.
