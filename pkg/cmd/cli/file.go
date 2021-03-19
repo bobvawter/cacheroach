@@ -368,9 +368,9 @@ func (c *CLI) file() *cobra.Command {
 				if err != nil {
 					return errors.Wrap(err, args[i])
 				}
-				c.logger.Tracef("created download URL: %s", retrieval.GetPath)
+				c.logger.Tracef("created download URI: %s", retrieval.GetUri)
 
-				u, err := url.ParseRequestURI(retrieval.GetPath)
+				u, err := url.ParseRequestURI(retrieval.GetUri)
 				if err != nil {
 					return errors.Wrap(err, args[i])
 				}
@@ -414,15 +414,27 @@ func (c *CLI) get(
 	if err != nil {
 		return err
 	}
-	c.logger.Tracef("created download URL: %s", retrieval.GetPath)
+	c.logger.Tracef("created download URL: %s", retrieval.GetUri)
 
-	u := &url.URL{
-		Scheme: "https",
-		Host:   c.Host,
-		Path:   retrieval.GetPath,
+	u, err := url.ParseRequestURI(retrieval.GetUri)
+	if err != nil {
+		return err
 	}
+	u.Host = c.Host
 	if c.Insecure {
 		u.Scheme = "http"
+	} else {
+		u.Scheme = "https"
+	}
+
+	resp, err := http.DefaultClient.Do(&http.Request{URL: u, Method: http.MethodGet})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return errors.New(resp.Status)
 	}
 
 	var out io.WriteCloser
@@ -438,17 +450,6 @@ func (c *CLI) get(
 		}
 	}
 	defer out.Close()
-
-	resp, err := http.DefaultClient.Do(&http.Request{URL: u, Method: http.MethodGet})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return errors.New(resp.Status)
-	}
-
 	n, err := io.Copy(out, resp.Body)
 	if err == nil {
 		c.logger.Infof("wrote %d bytes to %s", n, localFile)

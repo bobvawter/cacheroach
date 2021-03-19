@@ -301,7 +301,7 @@ func TestSmoke(t *testing.T) {
 			}
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 				fmt.Sprintf("https://localhost:%d%s",
-					rig.Server.BoundAddr.(*net.TCPAddr).Port, retr.GetPath), nil)
+					rig.Server.BoundAddr.(*net.TCPAddr).Port, retr.GetUri), nil)
 			if !a.NoError(err) {
 				return
 			}
