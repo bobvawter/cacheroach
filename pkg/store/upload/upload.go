@@ -233,7 +233,7 @@ func (s *Server) Fetch(ctx context.Context, req *upload.FetchRequest) (*upload.F
 	r.Header.Add("x-cacheroach-session", sn.ID.AsUUID().String())
 
 	files := s.fs.FileSystem(req.Tenant)
-	if f, err := files.Open(req.Path); err == nil {
+	if f, err := files.OpenVersion(ctx, req.Path, -1); err == nil {
 		if stat, err := f.Stat(); err == nil {
 			r.Header.Add("if-modified-since", stat.ModTime().Format(http.TimeFormat))
 		}

@@ -15,6 +15,7 @@ package store
 
 import (
 	"github.com/bobvawter/cacheroach/pkg/store/blob"
+	"github.com/bobvawter/cacheroach/pkg/store/cdc"
 	"github.com/bobvawter/cacheroach/pkg/store/fs"
 	"github.com/bobvawter/cacheroach/pkg/store/principal"
 	"github.com/bobvawter/cacheroach/pkg/store/tenant"
@@ -29,6 +30,7 @@ import (
 // Combine with storetesting.Set for a ready-to-run stack.
 var Set = wire.NewSet(
 	blob.Set,
+	cdc.Set,
 	fs.Set,
 	principal.Set,
 	tenant.Set,

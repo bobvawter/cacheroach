@@ -10,6 +10,7 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/cache"
 	"github.com/bobvawter/cacheroach/pkg/metrics"
 	"github.com/bobvawter/cacheroach/pkg/store/blob"
+	"github.com/bobvawter/cacheroach/pkg/store/cdc"
 	"github.com/bobvawter/cacheroach/pkg/store/fs"
 	"github.com/bobvawter/cacheroach/pkg/store/principal"
 	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
@@ -60,7 +61,8 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		DB:     pool,
 		Logger: logger,
 	}
-	tokenServer, err := token.ProvideServer(configConfig, pool, logger)
+	notifier := cdc.ProvideNotifier(pool, logger)
+	tokenServer, cleanup6, err := token.ProvideServer(ctx, configConfig, pool, logger, notifier)
 	if err != nil {
 		cleanup5()
 		cleanup4()
@@ -79,6 +81,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	bootstrapper, err := ProvideBootstrap(ctx, store, pool, fsStore, logger, server, tokenServer, tenantServer, vhostServer)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -90,6 +93,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		Bootstrapper: bootstrapper,
 	}
 	return bootstrapRig, func() {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()

@@ -7,6 +7,7 @@ package token
 
 import (
 	"context"
+	"github.com/bobvawter/cacheroach/pkg/store/cdc"
 	"github.com/bobvawter/cacheroach/pkg/store/principal"
 	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
 	"github.com/bobvawter/cacheroach/pkg/store/tenant"
@@ -24,7 +25,8 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	server, err := ProvideServer(config, pool, logger)
+	notifier := cdc.ProvideNotifier(pool, logger)
+	server, cleanup2, err := ProvideServer(ctx, config, pool, logger, notifier)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -44,6 +46,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		principals: principalServer,
 	}
 	return tokenRig, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }

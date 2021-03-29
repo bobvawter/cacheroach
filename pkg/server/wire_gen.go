@@ -22,6 +22,7 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/server/rest"
 	"github.com/bobvawter/cacheroach/pkg/server/rpc"
 	"github.com/bobvawter/cacheroach/pkg/store/blob"
+	"github.com/bobvawter/cacheroach/pkg/store/cdc"
 	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/fs"
 	"github.com/bobvawter/cacheroach/pkg/store/principal"
@@ -84,7 +85,8 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		DB:     pool,
 		Logger: logger,
 	}
-	tokenServer, err := token.ProvideServer(configConfig, pool, logger)
+	notifier := cdc.ProvideNotifier(pool, logger)
+	tokenServer, cleanup6, err := token.ProvideServer(ctx, configConfig, pool, logger, notifier)
 	if err != nil {
 		cleanup5()
 		cleanup4()
@@ -103,6 +105,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	bootstrapper, err := bootstrap.ProvideBootstrap(ctx, store, pool, fsStore, logger, server, tokenServer, tenantServer, vhostServer)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -112,6 +115,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	connector, err := oidc.ProvideConnector(ctx, factory, bootstrapper, config, logger, server, tokenServer)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -120,8 +124,9 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		return nil, nil, err
 	}
 	sessionWrapper := rest.ProvideSessionWrapper(bootstrapper, connector, tokenServer)
-	vHostMap, cleanup6, err := common.ProvideVHostMap(ctx, logger, vhostServer)
+	vHostMap, cleanup7, err := common.ProvideVHostMap(ctx, logger, vhostServer)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -136,6 +141,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	wrapper := metrics.ProvideWrapper(factory)
 	provision, err := rest.ProvideProvision(config, connector, logger, server, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	if err != nil {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -147,6 +153,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	retrieve := rest.ProvideRetrieve(logger, fsStore, pProfWrapper, latchWrapper, sessionWrapper, vHostWrapper)
 	authInterceptor, err := rpc.ProvideAuthInterceptor(connector, logger, tokenServer)
 	if err != nil {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -174,6 +181,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	uploadServer, err := upload.ProvideServer(store, configConfig, pool, fsStore, logger)
 	if err != nil {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -184,6 +192,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 	}
 	grpcServer, err := rpc.ProvideRPC(logger, authInterceptor, busyInterceptor, elideInterceptor, interceptor, vHostInterceptor, diags, fsServer, server, tenantServer, tokenServer, uploadServer, vhostServer)
 	if err != nil {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -193,8 +202,9 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		return nil, nil, err
 	}
 	publicMux := rest.ProvidePublicMux(cliConfigHandler, connector, fileHandler, wrapper, provision, retrieve, grpcServer)
-	serverServer, cleanup7, err := ProvideServer(ctx, busyLatch, v, config, debugMux, logger, publicMux)
+	serverServer, cleanup8, err := ProvideServer(ctx, busyLatch, v, config, debugMux, logger, publicMux)
 	if err != nil {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -213,6 +223,7 @@ func testRig(ctx context.Context) (*rig, func(), error) {
 		vhosts:     vhostServer,
 	}
 	return serverRig, func() {
+		cleanup8()
 		cleanup7()
 		cleanup6()
 		cleanup5()

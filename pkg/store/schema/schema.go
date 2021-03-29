@@ -39,36 +39,11 @@ func EnsureSchema(ctx context.Context, db *pgxpool.Pool, logger *log.Logger) err
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
+	if _, err := db.Exec(ctx, "SET CLUSTER SETTING kv.rangefeed.enabled = true"); err != nil {
+		return err
+	}
 	logger.Info("schema setup complete")
 
-	return nil
-}
-
-// TruncateSchema truncates all tables in the schema.
-func TruncateSchema(ctx context.Context, db *pgxpool.Pool, logger *log.Logger) error {
-	// Use cascade to do full cleanup.
-	names := []string{
-		"chunks",
-		"ropes",
-		"tenants",
-		"principals",
-		"vhosts",
-	}
-	tx, err := db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	for _, name := range names {
-		if _, err := tx.Exec(ctx, "TRUNCATE "+name+" CASCADE"); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return err
-	}
-	logger.Info("truncated all tables")
 	return nil
 }
 

@@ -13,39 +13,25 @@
 
 //+build wireinject
 
-package upload
+package cdc
 
 import (
 	"context"
 
-	"github.com/bobvawter/cacheroach/pkg/store/blob"
-	"github.com/bobvawter/cacheroach/pkg/store/cdc"
-	"github.com/bobvawter/cacheroach/pkg/store/fs"
-	"github.com/bobvawter/cacheroach/pkg/store/principal"
 	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
-	"github.com/bobvawter/cacheroach/pkg/store/tenant"
-	"github.com/bobvawter/cacheroach/pkg/store/token"
 	"github.com/google/wire"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type rig struct {
-	uploads    *Server
-	fs         *fs.Store
-	principals *principal.Server
-	tenants    *tenant.Server
-	tokens     *token.Server
+	db       *pgxpool.Pool
+	notifier *Notifier
 }
 
 func testRig(ctx context.Context) (*rig, func(), error) {
 	panic(wire.Build(
 		Set,
-		blob.Set,
-		cdc.Set,
-		fs.Set,
 		storetesting.Set,
-		principal.Set,
-		tenant.Set,
-		token.Set,
 		wire.Struct(new(rig), "*"),
 	))
 }
