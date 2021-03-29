@@ -15,6 +15,7 @@ package token
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/Mandala/go-log"
@@ -24,9 +25,11 @@ import (
 	"github.com/bobvawter/cacheroach/api/tenant"
 	"github.com/bobvawter/cacheroach/api/token"
 	"github.com/bobvawter/cacheroach/pkg/claims"
+	"github.com/bobvawter/cacheroach/pkg/store/cdc"
 	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/util"
 	"github.com/dgrijalva/jwt-go/v4"
+	"github.com/google/uuid"
 	"github.com/google/wire"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/jackc/pgconn"
@@ -66,19 +69,45 @@ var _ token.TokensServer = (*Server)(nil)
 
 // ProvideServer is called by wire.
 func ProvideServer(
+	ctx context.Context,
 	cfg *config.Config,
 	db *pgxpool.Pool,
 	logger *log.Logger,
-) (*Server, error) {
+	notifier *cdc.Notifier,
+) (*Server, func(), error) {
 	if len(cfg.SigningKeys) == 0 {
-		return nil, errors.New("HMAC signing keys must be specified")
+		return nil, nil, errors.New("HMAC signing keys must be specified")
 	}
 	validations, err := lru.New2Q(1024 * 1024)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		ch := notifier.Notify(ctx, []string{"sessions"})
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case n := <-ch:
+				var payload struct {
+					Principal uuid.UUID `json:"principal"`
+					Session   uuid.UUID `json:"session"`
+				}
+				if err := json.Unmarshal(n.Payload, &payload); err != nil {
+					logger.Warnf("could not unmarshal session notification: %v", err)
+					continue
+				}
+				logger.Tracef("invalidating session %s for %s", payload.Session, payload.Principal)
+				validations.Remove(payload.Principal)
+				validations.Remove(payload.Session)
+			}
+		}
+	}()
+
 	s := &Server{config: cfg, db: db, logger: logger, cache: validations}
-	return s, nil
+	return s, cancel, nil
 }
 
 // Current implements TokensServer.
@@ -99,11 +128,12 @@ func (s *Server) Find(scope *session.Scope, server token.Tokens_FindServer) erro
 		cached := found.(*cached)
 		if cached.expires.After(time.Now()) {
 			for i := range cached.sessions {
-				server.Send(cached.sessions[i])
+				if err := server.Send(cached.sessions[i]); err != nil {
+					return err
+				}
 			}
 			return nil
 		}
-		s.cache.Remove(cacheKey)
 	}
 	return util.RetryLoop(ctx, func(ctx context.Context, sideEffect *util.Marker) error {
 		rows, err := s.db.Query(ctx, `
@@ -120,11 +150,9 @@ WHERE expires_at > now()
 		}
 		defer rows.Close()
 
-		const maxCachedSession = 16
-		cacheOK := true
 		var cache []*session.Session
+		var earliestExpiration time.Time
 
-		sideEffect.Mark()
 		for rows.Next() {
 			var caps capabilities.Capabilities
 			var expires time.Time
@@ -159,26 +187,21 @@ WHERE expires_at > now()
 				continue
 			}
 
+			sideEffect.Mark()
 			if err := server.Send(s); err != nil {
 				return err
 			}
 
-			if cacheOK {
-				if len(cache) < maxCachedSession {
-					cache = append(cache, s)
-				} else {
-					cacheOK = false
-					cache = nil
-				}
+			cache = append(cache, s)
+			if earliestExpiration.IsZero() || expires.Before(earliestExpiration) {
+				earliestExpiration = expires
 			}
 		}
 
-		if cacheOK {
-			s.cache.Add(cacheKey, &cached{
-				expires:  time.Now().Add(time.Minute),
-				sessions: cache,
-			})
-		}
+		s.cache.Add(cacheKey, &cached{
+			expires:  earliestExpiration,
+			sessions: cache,
+		})
 
 		return nil
 	})

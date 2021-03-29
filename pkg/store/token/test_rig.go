@@ -18,6 +18,7 @@ package token
 import (
 	"context"
 
+	"github.com/bobvawter/cacheroach/pkg/store/cdc"
 	"github.com/bobvawter/cacheroach/pkg/store/principal"
 	"github.com/bobvawter/cacheroach/pkg/store/storetesting"
 	"github.com/bobvawter/cacheroach/pkg/store/tenant"
@@ -33,6 +34,7 @@ type rig struct {
 func testRig(ctx context.Context) (*rig, func(), error) {
 	panic(wire.Build(
 		Set,
+		cdc.Set,
 		storetesting.Set,
 		principal.Set,
 		tenant.Set,
