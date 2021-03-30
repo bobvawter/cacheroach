@@ -125,10 +125,12 @@ func TestFileFlow(t *testing.T) {
 		if !a.NoError(err) {
 			return
 		}
-		a.Len(files, 1)
+		if !a.Len(files, 1) {
+			return
+		}
 
 		some := files[0]
-		a.Equal("/some/", some.Name())
+		a.Equal("/some", some.Name())
 		a.True(some.IsDir())
 
 		f, err = fs.Open(some.Name())
@@ -140,7 +142,7 @@ func TestFileFlow(t *testing.T) {
 			return
 		}
 		a.True(stat.IsDir())
-		a.Equal("/some/", stat.Name())
+		a.Equal("/some", stat.Name())
 
 		files, err = f.(gofs.ReadDirFile).ReadDir(-1)
 		if !a.NoError(err) {
@@ -155,10 +157,29 @@ func TestFileFlow(t *testing.T) {
 
 	t.Run("delete", func(t *testing.T) {
 		a := assert.New(t)
+
+		// Ensure the deleted file is not in the listing
+		root, err := fs.Open("/")
+		if !a.NoError(err) {
+			return
+		}
+		files, err := root.(gofs.ReadDirFile).ReadDir(-1)
+		if !a.NoError(err) {
+			return
+		}
+		a.Len(files, 1)
+
 		a.NoError(fs.Delete(ctx, path))
 
-		_, err := fs.Open(path)
+		_, err = fs.Open(path)
 		a.Truef(errors.Is(err, gofs.ErrNotExist), "%v", err)
+
+		// Ensure the deleted file is not in the listing
+		files, err = root.(gofs.ReadDirFile).ReadDir(-1)
+		if !a.NoError(err) {
+			return
+		}
+		a.Len(files, 0)
 	})
 
 	t.Run("delete tenant and purge", func(t *testing.T) {
