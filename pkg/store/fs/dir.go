@@ -24,7 +24,7 @@ import (
 // dir implements fs.File, fs.FileInfo, and fs.ReadDirFile interfaces
 // to create a directory listing.
 type dir struct {
-	path string // The path, including a trailing /
+	path string // The path, excluding a trailing /
 	fs   *FileSystem
 }
 
@@ -52,13 +52,28 @@ func (d *dir) ReadDir(count int) ([]fs.DirEntry, error) {
 	if count >= 0 {
 		return nil, errors.New("partial listing not implemented")
 	}
-	parts := strings.Split(d.path, "/")
 
-	rows, err := d.fs.store.db.Query(ctx,
-		"SELECT DISTINCT x[$1], array_length(x, 1) > $1 "+
-			"FROM (SELECT string_to_array(path, '/') AS x "+
-			"FROM files WHERE tenant = $2 AND path LIKE $3)",
-		len(parts), d.fs.tenant, d.path+"%")
+	var pathPrefix = d.path
+	if !strings.HasSuffix(pathPrefix, "/") {
+		pathPrefix = pathPrefix + "/"
+	}
+
+	rows, err := d.fs.store.db.Query(ctx, `
+WITH
+  matching AS (
+    SELECT path, version, dtime IS NULL AS ok FROM files WHERE tenant = $2 AND path LIKE $3),
+  latest AS (
+    SELECT path, max(version) AS version FROM matching GROUP BY path),
+  active AS (
+    SELECT string_to_array(matching.path, '/') AS parts
+    FROM matching
+    JOIN latest
+    ON matching.path = latest.path
+    AND matching.version = latest.version
+    AND matching.ok)
+SELECT DISTINCT parts[$1], array_length(parts, 1) > $1 FROM active
+`,
+		strings.Count(pathPrefix, "/")+1, d.fs.tenant, pathPrefix+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -72,10 +87,7 @@ func (d *dir) ReadDir(count int) ([]fs.DirEntry, error) {
 			return nil, err
 		}
 
-		var nextPath = d.path + nextSegment
-		if isDir {
-			nextPath += "/"
-		}
+		var nextPath = pathPrefix + nextSegment
 		ret = append(ret, &listing{isDir, nextPath})
 	}
 

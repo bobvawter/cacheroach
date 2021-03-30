@@ -56,8 +56,12 @@ func (f *FileSystem) Open(name string) (fs.File, error) {
 	ctx := context.Background()
 	name = path.Clean(name)
 
-	if name == "/" {
+	// We'll see "." from the http package's FS wrapper.
+	if name == "/" || name == "." {
 		return &dir{path: "/", fs: f}, nil
+	}
+	if name[0] != '/' {
+		name = "/" + name
 	}
 	ret, err := f.OpenVersion(ctx, name, -1)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -75,7 +79,7 @@ func (f *FileSystem) Open(name string) (fs.File, error) {
 		defer rows.Close()
 		if rows.Next() {
 			return &dir{
-				path: name + "/",
+				path: name,
 				fs:   f,
 			}, nil
 		}
@@ -211,7 +215,7 @@ func (f *FileSystem) Put(ctx context.Context, meta *FileMeta, hash blob.Hash) er
 func (f *FileSystem) ReadDir(name string) ([]fs.DirEntry, error) {
 	return (&dir{
 		fs:   f,
-		path: path.Clean(name) + "/",
+		path: path.Clean(name),
 	}).ReadDir(0)
 }
 
