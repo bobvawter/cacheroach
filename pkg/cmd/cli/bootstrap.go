@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -59,6 +60,13 @@ func (b *bootstrap) execute(ctx context.Context, args []string) error {
 	if b.hmacKey == "" {
 		return errors.New("supertoken is required")
 	}
+
+	u, err := url.Parse(args[0])
+	if err != nil {
+		return errors.Wrap(err, "could not parse server URL")
+	}
+	b.Host = u.Host
+	b.Insecure = u.Scheme == "http"
 
 	hmacData, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(b.hmacKey)))
 	if err != nil {
