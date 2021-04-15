@@ -29,7 +29,7 @@ cacheroach -v -c root.cfg tenant ls
 # You can add a --password flag to enable password-based login.
 cacheroach -v -c root.cfg principal create $USER --out $HOME/.cacheroach/config
 # Grant the new user read/write access to a tenant.
-cacheroach -v -c root.cfg session delegate --for <PRINCIPAL> --on tenant --id <TENANT> --capabilites read,write
+cacheroach -v -c root.cfg session delegate --for <PRINCIPAL> --on tenant --id <TENANT> --capabilities read,write
 # Use the real user to list files
 cacheroach -v file ls -t <TENANT>
 # Set a default tenant id to minimize typing
@@ -95,6 +95,44 @@ a [centralized](./pkg/enforcer) manner. All access checks will have been perform
 RPC method has been invoked. The return values are also checked and elided. An RPC call will be
 rejected if a client "says" something that it's not allowed to "say," and it cannot "hear" anything
 that it could not "say" later.
+
+### OpenID Connect integration
+
+Cacheroach supports using an OIDC provider that provides a discovery URL.  Pass
+an OAuth client id, secret, and the OIDC discovery URL to the cacheroach server
+to enable automatic principal provisioning. An email-domain principal can
+provide automatic access delegation to newly-created principals.
+
+Using your favorite OIDC provider of choice, create a new OAuth web-server
+integration. Here's how you'd do it using [Google
+Accounts](https://developers.google.com/identity/protocols/oauth2/web-server),
+but any OIDC implemention ought to work. You will need the discovery URL, the
+OAuth2 client id and secret, and a list of user email domains for which you
+want to automatically provision accounts. You'll also need to configure an
+OAuth redirect URL, such as `https://your.cacheroach.server/_/oidc/receive`.
+
+```
+cacheroach start 
+  --oidcIssuer https://accounts.google.com
+  --oidcDomains yourcompany.com
+  --oidcClientID xyzzy
+  --oidcClientSecret soupOrSecret
+  ....
+```
+
+On the client side, run `cacheroach auth login
+https://your.cacheroach.server/`. You'll be prompted with a URL to open in a
+browser to authenticate with the OIDC provider. If all goes accordingly, your
+browser will connect to the running cacheroach instance to be redirected to the
+OIDC provider.  The provider will authenticate your browser and redirect back
+to the cacheroach server to complete the handoff. The cacheroach server will
+then redirect you to an ephemeral webserver started by the local cacheroach CLI
+process to transfer the cacheroach session data.
+
+Using a superuser token, you can create a cacheroach principal that represents
+all users with a given OIDC domain using `cacheroach principal create
+--emailDomain yourcompany.com "Your Company"`. Any grants provided to the
+domain principal will be inherited by OIDC-provisioned principals.
 
 ### Signed URLs
 
