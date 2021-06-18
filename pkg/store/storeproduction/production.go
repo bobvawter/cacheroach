@@ -16,6 +16,7 @@ package storeproduction
 
 import (
 	"context"
+	"time"
 
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/pkg/cache"
@@ -41,13 +42,22 @@ func ProvideDB(
 	if err != nil {
 		return nil, nil
 	}
+	pgCfg.ConnConfig.RuntimeParams["application_name"] = "cacheroach"
+	pgCfg.MaxConnLifetime = time.Hour
 	if pgCfg.MaxConns < int32(cfg.ChunkConcurrency) {
 		pgCfg.MaxConns = int32(cfg.ChunkConcurrency)
 		logger.Infof("raising pool_max_conns to %d", cfg.ChunkConcurrency)
+		pgCfg.MinConns = 1
 	}
-	pgCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		_, err := conn.Exec(ctx, "SET application_name = $1", "cacheroach")
-		return err
+	if logger.IsDebug() {
+		pgCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+			var r string
+			// May error out if there's no region in the --locality flag
+			if err := conn.QueryRow(ctx, "SELECT gateway_region()").Scan(&r); err == nil {
+				logger.Tracef("connected to db region %q", r)
+			}
+			return nil
+		}
 	}
 
 	return pgxpool.ConnectConfig(ctx, pgCfg)

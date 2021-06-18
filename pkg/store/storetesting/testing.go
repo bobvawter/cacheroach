@@ -26,7 +26,6 @@ import (
 	"github.com/bobvawter/cacheroach/pkg/store/config"
 	"github.com/bobvawter/cacheroach/pkg/store/schema"
 	"github.com/google/wire"
-	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -97,13 +96,10 @@ func ProvideDB(
 	if err != nil {
 		return nil, nil, err
 	}
+	cfg.ConnConfig.RuntimeParams["application_name"] = "cacheroach_testing"
 	if cfg.MaxConns < int32(config.ChunkConcurrency) {
 		cfg.MaxConns = int32(config.ChunkConcurrency)
 		logger.Infof("raising pool_max_conns to %d", config.ChunkConcurrency)
-	}
-	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		_, err := conn.Exec(ctx, "SET application_name = $1", "cacheroach_testing")
-		return err
 	}
 
 	conn, err := pgxpool.ConnectConfig(ctx, cfg)
