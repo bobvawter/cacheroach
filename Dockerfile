@@ -23,21 +23,12 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/bin/cacheroach /usr/bin/
 
 # This is a default configuration for Google Cloud Run. It assumes that
-# you have the secret manager API installed. A named secret should
-# contain a tar.gz file that has files with the @filename values below.
+# you have the secret manager API installed and are mounting the
+# following environment variables.
 #
 # The OIDC integration is optional, but if you're already deploying
 # into GCR, you need only to create credentials for an OAuth2 webapp.
 FROM cacheroach AS cloudrun
-# Expect $PORT from Cloud Run environment.
-ENV CACHE_MEMORY="128" \
-    CONNECT="@connect" \
-    GCLOUD_SECRET_NAME="" \
-    HMAC="@hmac" \
-    OIDC_CLIENT_ID="@oidc_client_id" \
-    OIDC_CLIENT_SECRET="@oidc_client_secret" \
-    OIDC_DOMAINS="cockroachlabs.com" \
-    OIDC_ISSUER="https://accounts.google.com"
 ENTRYPOINT [ \
   "/usr/bin/cacheroach", \
   "start", \

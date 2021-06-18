@@ -17,26 +17,17 @@ package root
 import (
 	"context"
 	"os"
-
 	"strings"
 
 	"github.com/Mandala/go-log"
 	"github.com/bobvawter/cacheroach/pkg/cmd/cli"
 	"github.com/bobvawter/cacheroach/pkg/cmd/start"
-	"github.com/bobvawter/cacheroach/pkg/gcloud"
 	"github.com/spf13/cobra"
 )
 
 // Execute is the main entry point for cacheroach.
 func Execute(ctx context.Context) error {
 	logger := log.New(os.Stderr).Quiet()
-
-	// Download and extract pre-flight secrets from the environment.
-	if s := os.Getenv("GCLOUD_SECRET_NAME"); s != "" {
-		if err := (&gcloud.Config{Name: s, Out: "."}).Download(ctx, logger); err != nil {
-			return err
-		}
-	}
 
 	// Cacheroach is delivered in a single-file image, so there's no
 	// shell to perform environment expansion. We'll also take this
