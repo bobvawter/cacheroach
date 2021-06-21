@@ -260,9 +260,8 @@ func (s *Store) ensureChunk(
 
 	err = util.Retry(ctx, func(ctx context.Context) error {
 		tag, err := s.db.Exec(ctx,
-			"INSERT INTO chunks (tenant, chunk, data) "+
-				"VALUES ($1, $2, $3) "+
-				"ON CONFLICT DO NOTHING",
+			"UPSERT INTO chunks (tenant, chunk, data) "+
+				"VALUES ($1, $2, $3)",
 			tID, hash[:], chunk)
 		if err == nil && tag.RowsAffected() > 0 {
 			s.logger.Debugf("stored chunk %q", hash)
@@ -282,9 +281,8 @@ func (s *Store) ensureChunkInRope(
 
 	return util.Retry(ctx, func(ctx context.Context) error {
 		tag, err := s.db.Exec(ctx,
-			"INSERT INTO ropes (tenant, rope, off, chunk, chunk_length) "+
-				"VALUES ($1, $2, $3, $4, $5) "+
-				"ON CONFLICT DO NOTHING",
+			"UPSERT INTO ropes (tenant, rope, off, chunk, chunk_length) "+
+				"VALUES ($1, $2, $3, $4, $5)",
 			tID, ropeID, offset, chunkHash[:], len(chunk))
 		if err == nil && tag.RowsAffected() > 0 {
 			s.logger.Debugf("attached chunk %q to rope %q", chunkHash, ropeID)
